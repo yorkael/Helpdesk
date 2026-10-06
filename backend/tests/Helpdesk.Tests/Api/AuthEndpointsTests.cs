@@ -4,10 +4,14 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Helpdesk.Application.Abstractions;
 using Helpdesk.Application.Authentication;
+using Helpdesk.Domain.Entities;
+using Helpdesk.Domain.Enums;
 using Helpdesk.Infrastructure.Authentication;
 using Helpdesk.Tests.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
@@ -91,6 +95,27 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task Logout_works_with_an_expired_access_token_because_its_credential_is_the_refresh_token()
+    {
+        await RegisterAsync("Ana Ruiz", "ana@example.com", Password);
+        var login = await LoginAsync("ana@example.com", Password);
+        var expiredAccessToken = _factory.Services.GetRequiredService<IAccessTokenIssuer>()
+            .Issue(new User("Ana Ruiz", "ana@example.com", "hash", UserRole.Client), DateTimeOffset.UtcNow.AddMinutes(-16))
+            .Value;
+        await AssertProblemAsync(await GetMeAsync(expiredAccessToken), HttpStatusCode.Unauthorized);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/logout")
+        {
+            Content = JsonContent.Create(new RefreshTokenRequest(login.RefreshToken))
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", expiredAccessToken);
+        var logout = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        await AssertProblemAsync(await RefreshAsync(login.RefreshToken), HttpStatusCode.Unauthorized);
     }
 
     [Fact]
