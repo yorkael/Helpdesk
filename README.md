@@ -8,9 +8,10 @@ A support ticket system built as a public portfolio project: a layered ASP.NET C
 
 | Area | Technologies |
 |---|---|
-| Backend | ASP.NET Core on .NET 10, C#, EF Core |
+| Backend | ASP.NET Core on .NET 10, C#, EF Core, FluentValidation |
+| Authentication | JWT bearer access tokens, rotating refresh tokens, role-based policies |
 | Database | PostgreSQL 18 |
-| Tests | xUnit, Testcontainers |
+| Tests | xUnit, Testcontainers, WebApplicationFactory |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Tooling | pnpm, oxlint |
 
@@ -22,8 +23,8 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 |---|---|---|
 | `Helpdesk.Domain` | Entities, enums and business rules | none |
 | `Helpdesk.Application` | Use cases, DTOs, validators and repository interfaces | Domain |
-| `Helpdesk.Infrastructure` | Implementations of the Application interfaces (persistence) | Application, Domain |
-| `Helpdesk.Api` | HTTP endpoints and composition root | Application, Infrastructure |
+| `Helpdesk.Infrastructure` | Implementations of the Application interfaces (persistence, password hashing, tokens) | Application, Domain |
+| `Helpdesk.Api` | HTTP endpoints, authentication, error handling and composition root | Application, Infrastructure |
 | `Helpdesk.Tests` | Unit and integration tests | Application, Api |
 
 `Helpdesk.Domain` has no project or package references.
@@ -89,6 +90,26 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" \
 
 Use the same port, user and password as in `.env`. In containers and hosting, set the `ConnectionStrings__DefaultConnection` environment variable instead.
 
+### JWT signing key
+
+The API signs access tokens with a secret key of at least 32 random bytes, encoded as base64, and refuses to start without it. Generate one and store it with user secrets.
+
+PowerShell (works in Windows PowerShell 5.1 and PowerShell 7):
+
+```powershell
+$bytes = New-Object byte[] 48
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+dotnet user-secrets set "Jwt:SigningKey" ([Convert]::ToBase64String($bytes)) --project backend/src/Helpdesk.Api
+```
+
+Bash, with OpenSSL:
+
+```bash
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project backend/src/Helpdesk.Api
+```
+
+In containers and hosting, set the `Jwt__SigningKey` environment variable instead. Issuer, audience and token lifetimes are not secret and live in `appsettings.json` under `Jwt`.
+
 Apply the migrations:
 
 ```bash
@@ -113,9 +134,9 @@ dotnet test backend/Helpdesk.sln
 dotnet run --project backend/src/Helpdesk.Api
 ```
 
-`dotnet test` requires Docker to be running: the persistence tests start a disposable PostgreSQL 18 container with Testcontainers.
+`dotnet test` requires Docker to be running: the persistence and API tests start a disposable PostgreSQL 18 container with Testcontainers. The API tests host the application in memory with their own settings and a random signing key, so they do not need user secrets.
 
-The API listens on http://localhost:5038 and fails at startup if the connection string is missing. There are no endpoints yet; in Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
+The API listens on http://localhost:5038 and fails at startup if the connection string or the JWT settings are missing or invalid. In Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
 
 ### Frontend
 
@@ -126,6 +147,27 @@ pnpm dev
 ```
 
 The app runs on http://localhost:5173.
+
+## Authentication
+
+| Endpoint | Access | Result |
+|---|---|---|
+| `POST /api/auth/register` | anonymous | `201` with the new user; public sign-up always creates a `Client` |
+| `POST /api/auth/login` | anonymous | `200` with an access token and a refresh token |
+| `POST /api/auth/refresh` | anonymous | `200` with a new token pair; the refresh token used is revoked |
+| `POST /api/auth/logout` | anonymous | `204`, also for unknown or already revoked tokens |
+| `GET /api/auth/me` | authenticated | `200` with the caller as described by the access token |
+
+- **Passwords** are hashed with PBKDF2-HMAC-SHA512, 210,000 iterations and a random salt (ASP.NET Core Identity's `PasswordHasher`). Older hashes are upgraded on the next successful login.
+- **Access tokens** are JWTs signed with HS256 that expire after 15 minutes. They carry `sub`, `email`, `name`, `role` and `jti`.
+- **Refresh tokens** are 256-bit random values that expire after 7 days. Only their SHA-256 hash is stored. Each refresh rotates the token; presenting an already rotated token revokes every active session of that user.
+- **Authorization** uses the policies `AdminOnly`, `StaffOnly` (Admin and Agent) and `ClientOnly`. Endpoints require an authenticated user unless they opt out explicitly.
+- **Errors** use `application/problem+json`. Login answers the same `401` for an unknown email, a wrong password and an inactive account.
+
+Known limitations:
+
+- An access token that was already issued stays valid until it expires, for up to 15 minutes, even after the user is deactivated or their role changes. Access tokens are not checked against the database on each request; the short lifetime bounds this window, and refreshing is rejected immediately for inactive users.
+- There is no rate limiting or lockout on the authentication endpoints yet ([#20](https://github.com/yorkael/Helpdesk/issues/20)).
 
 ## Roadmap
 

@@ -150,6 +150,77 @@ public class MigrationTests(PostgreSqlFixture fixture)
         Assert.True(user.IsActive);
     }
 
+    [Fact]
+    public async Task Refresh_token_round_trips_with_a_row_version()
+    {
+        await using var context = await fixture.CreateMigratedDatabaseContextAsync();
+        var token = await SeedRefreshTokenAsync(context, "token-hash");
+
+        await using var readContext = OpenNewContext(context);
+        var stored = await readContext.RefreshTokens.SingleAsync(t => t.Id == token.Id);
+
+        Assert.Equal(token.UserId, stored.UserId);
+        Assert.Equal("token-hash", stored.TokenHash);
+        Assert.Equal(UtcNow, stored.CreatedAt);
+        Assert.Equal(UtcNow.AddDays(7), stored.ExpiresAt);
+        Assert.Null(stored.RevokedAt);
+        Assert.NotEqual(0u, stored.Version);
+    }
+
+    [Fact]
+    public async Task Duplicate_refresh_token_hash_violates_the_unique_index()
+    {
+        await using var context = await fixture.CreateMigratedDatabaseContextAsync();
+        var token = await SeedRefreshTokenAsync(context, "token-hash");
+
+        context.RefreshTokens.Add(new RefreshToken(token.UserId, "token-hash", UtcNow, UtcNow.AddDays(7)));
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+
+        var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, postgresException.SqlState);
+    }
+
+    [Fact]
+    public async Task Deleting_a_user_removes_their_refresh_tokens()
+    {
+        await using var context = await fixture.CreateMigratedDatabaseContextAsync();
+        var token = await SeedRefreshTokenAsync(context, "token-hash");
+
+        await context.Users.Where(u => u.Id == token.UserId).ExecuteDeleteAsync();
+
+        Assert.Equal(0, await context.RefreshTokens.CountAsync());
+    }
+
+    [Fact]
+    public async Task Concurrent_revocation_of_the_same_token_is_rejected()
+    {
+        await using var context = await fixture.CreateMigratedDatabaseContextAsync();
+        var token = await SeedRefreshTokenAsync(context, "token-hash");
+
+        await using var firstContext = OpenNewContext(context);
+        await using var secondContext = OpenNewContext(context);
+        var firstCopy = await firstContext.RefreshTokens.SingleAsync(t => t.Id == token.Id);
+        var secondCopy = await secondContext.RefreshTokens.SingleAsync(t => t.Id == token.Id);
+
+        firstCopy.Revoke(UtcNow.AddMinutes(1));
+        await firstContext.SaveChangesAsync();
+
+        secondCopy.Revoke(UtcNow.AddMinutes(1));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => secondContext.SaveChangesAsync());
+    }
+
+    private static async Task<RefreshToken> SeedRefreshTokenAsync(HelpdeskDbContext context, string tokenHash)
+    {
+        var user = new User("Ana Ruiz", "ana@example.com", "hash", UserRole.Client);
+        var token = new RefreshToken(user.Id, tokenHash, UtcNow, UtcNow.AddDays(7));
+
+        context.AddRange(user, token);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        return token;
+    }
+
     private static async Task<(Category Category, User Client, Ticket Ticket)> SeedTicketAsync(HelpdeskDbContext context)
     {
         var category = new Category("Hardware");

@@ -1,7 +1,5 @@
-using Helpdesk.Infrastructure;
 using Helpdesk.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -16,7 +14,27 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
-    public async Task<HelpdeskDbContext> CreateEmptyDatabaseContextAsync()
+    public async Task<HelpdeskDbContext> CreateEmptyDatabaseContextAsync() =>
+        CreateContext(await CreateEmptyDatabaseAsync());
+
+    public async Task<HelpdeskDbContext> CreateMigratedDatabaseContextAsync()
+    {
+        var context = await CreateEmptyDatabaseContextAsync();
+        await context.Database.MigrateAsync();
+        return context;
+    }
+
+    /// <returns>The connection string of a new, fully migrated database.</returns>
+    public async Task<string> CreateMigratedDatabaseAsync()
+    {
+        await using var context = await CreateMigratedDatabaseContextAsync();
+        return context.Database.GetConnectionString()!;
+    }
+
+    public static HelpdeskDbContext CreateContext(string connectionString) =>
+        TestConfiguration.CreateInfrastructureServices(connectionString).GetRequiredService<HelpdeskDbContext>();
+
+    private async Task<string> CreateEmptyDatabaseAsync()
     {
         var databaseName = $"test_{Guid.NewGuid():N}";
 
@@ -27,35 +45,10 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        var connectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
+        return new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
             Database = databaseName
         }.ConnectionString;
-
-        return CreateContext(connectionString);
-    }
-
-    public async Task<HelpdeskDbContext> CreateMigratedDatabaseContextAsync()
-    {
-        var context = await CreateEmptyDatabaseContextAsync();
-        await context.Database.MigrateAsync();
-        return context;
-    }
-
-    public static HelpdeskDbContext CreateContext(string connectionString)
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:DefaultConnection"] = connectionString
-            })
-            .Build();
-
-        var services = new ServiceCollection()
-            .AddInfrastructure(configuration)
-            .BuildServiceProvider();
-
-        return services.CreateScope().ServiceProvider.GetRequiredService<HelpdeskDbContext>();
     }
 }
 

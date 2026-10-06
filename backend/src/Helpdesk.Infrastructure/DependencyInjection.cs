@@ -1,4 +1,7 @@
+using Helpdesk.Application.Abstractions;
+using Helpdesk.Infrastructure.Authentication;
 using Helpdesk.Infrastructure.Persistence;
+using Helpdesk.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,9 +23,22 @@ public static class DependencyInjection
                 $"'ConnectionStrings__{ConnectionStringName}' environment variable elsewhere.");
         }
 
+        var jwtOptions = JwtOptions.FromConfiguration(configuration);
+
         services.AddDbContext<HelpdeskDbContext>(options => options
             .UseNpgsql(connectionString)
             .UseSnakeCaseNamingConvention());
+
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+        services.AddSingleton(jwtOptions);
+        services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
+        services.AddSingleton<IRefreshTokenIssuer, RefreshTokenIssuer>();
+
+        // Built here, at startup, so the dummy hash for unknown emails already exists before the first login.
+        services.AddSingleton<IPasswordHasher>(new IdentityPasswordHasher());
 
         return services;
     }

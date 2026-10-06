@@ -48,10 +48,11 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 ## Comandos (completar al crearlos)
 - Fijar el SDK con `global.json` (SDK 10.x).
 - Compilar: `dotnet build backend/Helpdesk.sln`
-- Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia usan Testcontainers con `postgres:18`)
+- Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia y de API usan Testcontainers con `postgres:18`; la fábrica de pruebas de API inyecta su propia configuración y clave aleatoria, no usa user-secrets)
 - Base de datos local: `docker compose up -d` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`)
 - Herramientas locales: `dotnet tool restore` (instala `dotnet-ef` desde `dotnet-tools.json`)
 - Cadena de conexión local: user-secrets de Api, clave `ConnectionStrings:DefaultConnection`; fuera de local, variable `ConnectionStrings__DefaultConnection`
+- Clave de firma JWT local (mínimo 32 bytes aleatorios en base64; sin ella la API y `dotnet ef` no arrancan): user-secrets de Api, clave `Jwt:SigningKey`; fuera de local, variable `Jwt__SigningKey`. Generarla en PowerShell 5.1 o 7: `$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); dotnet user-secrets set "Jwt:SigningKey" ([Convert]::ToBase64String($bytes)) --project backend/src/Helpdesk.Api`; alternativa: `openssl rand -base64 48`
 - Aplicar migraciones: `dotnet ef database update --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api`
 - Nueva migración: `dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations`
 - Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`
