@@ -7,7 +7,7 @@ public class ModelSnapshotTests
     [Fact]
     public void Model_has_no_changes_missing_from_migrations()
     {
-        using var context = PostgreSqlFixture.CreateContext("Host=localhost;Database=unused");
+        using var context = PostgreSqlFixture.CreateContext(TestConfiguration.UnusedConnectionString);
 
         Assert.False(
             context.Database.HasPendingModelChanges(),
