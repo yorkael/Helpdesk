@@ -18,6 +18,8 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Explica el porqué de cada decisión técnica, no solo el qué. Debo poder defenderla en una entrevista con mis palabras.
 - Al cerrar cada HU, hazme 2 o 3 preguntas de entrevista sobre lo que construimos.
 - Sigue el flujo de Git descrito abajo, sin excepciones (nunca commits directos a `main` una vez activada la protección).
+- Nunca hagas commit ni push sin mi aprobación explícita. Antes de cada commit muéstrame `git status`, el diff y la salida de las verificaciones, y espera mi confirmación.
+- Trabaja por etapas: al terminar cada una, detente y espera mi confirmación para seguir.
 
 ## Flujo de Git (GitHub Flow)
 - `main` siempre estable. Una rama por HU: `feature/hu-N-short-description` (también `fix/`, `chore/`, `docs/`).
