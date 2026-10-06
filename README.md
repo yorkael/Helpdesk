@@ -8,8 +8,9 @@ A support ticket system built as a public portfolio project: a layered ASP.NET C
 
 | Area | Technologies |
 |---|---|
-| Backend | ASP.NET Core on .NET 10, C# |
-| Tests | xUnit |
+| Backend | ASP.NET Core on .NET 10, C#, EF Core |
+| Database | PostgreSQL 18 |
+| Tests | xUnit, Testcontainers |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Tooling | pnpm, oxlint |
 
@@ -45,6 +46,8 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 ├── docs/                       # project specification and plan
 ├── .github/workflows/          # CI workflows (empty for now)
 ├── .env.example
+├── docker-compose.yml          # local PostgreSQL
+├── dotnet-tools.json           # local .NET tools (dotnet-ef)
 └── global.json                 # pins the .NET SDK to 10.x
 ```
 
@@ -55,6 +58,7 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Node.js](https://nodejs.org/) 22.12 or later
 - [pnpm](https://pnpm.io/installation) (the version is pinned in `frontend/package.json`)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (local database and integration tests)
 
 ### Environment variables
 
@@ -64,7 +68,40 @@ Copy the example file and fill in your local values:
 cp .env.example .env
 ```
 
-`.env` is ignored by Git. The variables are placeholders for upcoming stories; the current code does not read them yet.
+`.env` is ignored by Git. `docker compose` reads the `POSTGRES_*` variables from it.
+
+### Local database
+
+From the repository root:
+
+```bash
+docker compose up -d                 # PostgreSQL 18 on 127.0.0.1:${POSTGRES_PORT}
+dotnet tool restore                  # installs dotnet-ef from dotnet-tools.json
+```
+
+The API reads the connection string from `ConnectionStrings:DefaultConnection`. For local development store it with user secrets, outside the repository:
+
+```bash
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" \
+  "Host=localhost;Port=5432;Database=helpdesk;Username=<user>;Password=<password>" \
+  --project backend/src/Helpdesk.Api
+```
+
+Use the same port, user and password as in `.env`. In containers and hosting, set the `ConnectionStrings__DefaultConnection` environment variable instead.
+
+Apply the migrations:
+
+```bash
+dotnet ef database update --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api
+```
+
+To add a migration after changing the model:
+
+```bash
+dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations
+```
+
+Migrations are applied explicitly; the API does not migrate the database on startup.
 
 ### Backend
 
@@ -76,7 +113,9 @@ dotnet test backend/Helpdesk.sln
 dotnet run --project backend/src/Helpdesk.Api
 ```
 
-The API listens on http://localhost:5038. There are no endpoints yet; in Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
+`dotnet test` requires Docker to be running: the persistence tests start a disposable PostgreSQL 18 container with Testcontainers.
+
+The API listens on http://localhost:5038 and fails at startup if the connection string is missing. There are no endpoints yet; in Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
 
 ### Frontend
 
