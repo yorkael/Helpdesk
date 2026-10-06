@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Helpdesk.Domain\Helpdesk.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
