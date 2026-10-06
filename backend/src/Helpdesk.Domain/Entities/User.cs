@@ -29,4 +29,9 @@ public class User
     public UserRole Role { get; private set; }
 
     public bool IsActive { get; private set; }
+
+    public void ChangePasswordHash(string passwordHash)
+    {
+        PasswordHash = Guard.NotBlank(passwordHash, nameof(passwordHash));
+    }
 }
