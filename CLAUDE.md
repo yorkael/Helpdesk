@@ -48,5 +48,10 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 ## Comandos (completar al crearlos)
 - Fijar el SDK con `global.json` (SDK 10.x).
 - Compilar: `dotnet build backend/Helpdesk.sln`
-- Pruebas: `dotnet test backend/Helpdesk.sln`
+- Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia usan Testcontainers con `postgres:18`)
+- Base de datos local: `docker compose up -d` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`)
+- Herramientas locales: `dotnet tool restore` (instala `dotnet-ef` desde `dotnet-tools.json`)
+- Cadena de conexión local: user-secrets de Api, clave `ConnectionStrings:DefaultConnection`; fuera de local, variable `ConnectionStrings__DefaultConnection`
+- Aplicar migraciones: `dotnet ef database update --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api`
+- Nueva migración: `dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations`
 - Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`
