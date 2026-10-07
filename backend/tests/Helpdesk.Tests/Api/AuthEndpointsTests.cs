@@ -191,6 +191,18 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Wrongly_typed_json_returns_a_400_problem_without_internal_type_names()
+    {
+        var response = await _client.PostAsJsonAsync("/api/auth/login", new { email = 123, password = Password });
+
+        var problem = await AssertProblemAsync(response, HttpStatusCode.BadRequest);
+        var error = Assert.Single(problem.GetProperty("errors").EnumerateObject());
+        Assert.Equal("$.email", error.Name);
+        Assert.Equal("The input was not valid.", Assert.Single(error.Value.EnumerateArray()).GetString());
+        Assert.DoesNotContain("Helpdesk", problem.GetRawText());
+    }
+
+    [Fact]
     public async Task Registering_an_existing_email_returns_a_409_problem()
     {
         await RegisterAsync("Ana Ruiz", "ana@example.com", Password);

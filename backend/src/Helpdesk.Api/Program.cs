@@ -14,7 +14,10 @@ builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 
 // FluentValidation is the single source of input rules, so MVC must not add its own
 // implicit [Required] for non-nullable properties.
-builder.Services.AddControllers(options => options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true);
+builder.Services.AddControllers(options => options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true)
+    // A body that cannot be deserialized (e.g. a number where text is expected) gets a generic message
+    // instead of the JSON exception, which names internal types.
+    .AddJsonOptions(options => options.AllowInputFormatterExceptionMessages = false);
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
