@@ -63,6 +63,20 @@ public class TicketCommentServiceTests
     }
 
     [Fact]
+    public async Task Creation_time_is_truncated_to_the_microsecond_the_database_keeps()
+    {
+        var ticket = SeedTicket();
+        _time.Now = new DateTimeOffset(2026, 10, 7, 9, 30, 0, TimeSpan.Zero).AddTicks(1_234_567);
+
+        var response = await _commentService.AddAsync(
+            ticket.Id, new CreateCommentRequest("Any update?", false), _client.Id, UserRole.Client, CancellationToken.None);
+
+        var expected = new DateTimeOffset(2026, 10, 7, 9, 30, 0, TimeSpan.Zero).AddTicks(1_234_560);
+        Assert.Equal(expected, response.CreatedAt);
+        Assert.Equal(expected, Assert.Single(_comments.Comments).CreatedAt);
+    }
+
+    [Fact]
     public async Task Content_is_trimmed()
     {
         var ticket = SeedTicket();

@@ -38,7 +38,7 @@ public sealed class TicketCommentService(
             throw new TicketActionForbiddenException("Only support staff can write internal comments.");
         }
 
-        var comment = ticket.CreateComment(authorId, request.Content, isInternal, timeProvider.GetUtcNow());
+        var comment = ticket.CreateComment(authorId, request.Content, isInternal, NowToTheMicrosecond());
         var author = await users.GetByIdAsync(authorId, cancellationToken)
             ?? throw new InvalidOperationException("The authenticated user does not exist.");
 
@@ -72,6 +72,14 @@ public sealed class TicketCommentService(
     private async Task<Ticket> LoadVisibleAsync(Guid ticketId, Guid userId, UserRole role, CancellationToken cancellationToken) =>
         await tickets.GetVisibleAsync(ticketId, TicketVisibilities.For(role), userId, cancellationToken)
         ?? throw new TicketNotFoundException();
+
+    // PostgreSQL keeps timestamps to the microsecond and .NET to 100 ns. Truncating first makes the time in the
+    // 201 response the same one the list returns later for the same comment.
+    private DateTimeOffset NowToTheMicrosecond()
+    {
+        var now = timeProvider.GetUtcNow();
+        return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
+    }
 
     // As with tickets, an unknown role must never widen what is shown, so it fails.
     private static CommentVisibility CommentVisibilityFor(UserRole role) => role switch
