@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using static Helpdesk.Tests.Api.ProblemAssertions;
 
 namespace Helpdesk.Tests.Api;
 
@@ -276,16 +277,6 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
                 [AccessTokenClaimTypes.Role] = "Admin"
             }
         });
-
-    private static async Task<JsonElement> AssertProblemAsync(HttpResponseMessage response, HttpStatusCode expectedStatus)
-    {
-        Assert.Equal(expectedStatus, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-
-        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((int)expectedStatus, problem.GetProperty("status").GetInt32());
-        return problem;
-    }
 
     // traceId differs per request by design; every other member must match.
     private static void AssertSameProblem(JsonElement expected, JsonElement actual)
