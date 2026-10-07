@@ -23,6 +23,15 @@ public class AuditLog
     {
     }
 
+    /// <summary>A creation is recorded as the first status value, so the status history starts with it.</summary>
+    public static AuditLog TicketCreated(Ticket ticket) => new(
+        ticket.Id,
+        ticket.CreatedById,
+        AuditFields.Status,
+        oldValue: null,
+        ticket.Status.ToString(),
+        ticket.CreatedAt);
+
     public Guid Id { get; private set; }
 
     public Guid TicketId { get; private set; }
