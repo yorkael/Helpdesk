@@ -1,4 +1,5 @@
 using Helpdesk.Application.Abstractions;
+using Helpdesk.Application.Tickets;
 using Helpdesk.Domain.Entities;
 
 namespace Helpdesk.Tests.Application.Tickets;
@@ -7,7 +8,18 @@ internal sealed class InMemoryTicketRepository : ITicketRepository
 {
     public List<Ticket> Tickets { get; } = [];
 
+    /// <summary>The filters the service sent; applying them is the real repository's job.</summary>
+    public TicketListQuery? LastListQuery { get; private set; }
+
+    public PagedResponse<TicketListItem> ListResult { get; set; } = new([], 1, 20, 0);
+
     public void Add(Ticket ticket) => Tickets.Add(ticket);
+
+    public Task<PagedResponse<TicketListItem>> ListAsync(TicketListQuery query, CancellationToken cancellationToken)
+    {
+        LastListQuery = query;
+        return Task.FromResult(ListResult);
+    }
 }
 
 internal sealed class InMemoryAuditLogRepository : IAuditLogRepository

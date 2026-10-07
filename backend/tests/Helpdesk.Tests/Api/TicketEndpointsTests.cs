@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
 using Helpdesk.Application.Abstractions;
 using Helpdesk.Application.Authentication;
 using Helpdesk.Application.Tickets;
@@ -10,6 +9,7 @@ using Helpdesk.Domain.Enums;
 using Helpdesk.Tests.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using static Helpdesk.Tests.Api.ProblemAssertions;
 
 namespace Helpdesk.Tests.Api;
 
@@ -218,15 +218,5 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/tickets") { Content = JsonContent.Create(body) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         return _client.SendAsync(request);
-    }
-
-    private static async Task<JsonElement> AssertProblemAsync(HttpResponseMessage response, HttpStatusCode expectedStatus)
-    {
-        Assert.Equal(expectedStatus, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-
-        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((int)expectedStatus, problem.GetProperty("status").GetInt32());
-        return problem;
     }
 }
