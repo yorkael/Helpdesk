@@ -17,7 +17,7 @@ public sealed record TicketResponse(
     DateTimeOffset CreatedAt);
 
 /// <summary>
-/// Bound from the query string. Has no creator filter on purpose: which tickets a user may see
+/// Built from the query string. Has no creator filter on purpose: which tickets a user may see
 /// comes from their token, and unknown query parameters are ignored.
 /// </summary>
 public sealed record ListTicketsRequest(
