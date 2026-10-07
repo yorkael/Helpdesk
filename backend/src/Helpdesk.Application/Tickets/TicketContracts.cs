@@ -5,6 +5,12 @@ namespace Helpdesk.Application.Tickets;
 /// </summary>
 public sealed record CreateTicketRequest(string Title, string Description, Guid CategoryId, string Priority);
 
+/// <summary>Only the new assignee: the user making the change comes from the access token, never from the body.</summary>
+public sealed record AssignTicketRequest(Guid AssigneeId);
+
+/// <summary>Only the new status: the user making the change comes from the access token, never from the body.</summary>
+public sealed record ChangeTicketStatusRequest(string Status);
+
 public sealed record TicketResponse(
     Guid Id,
     string Title,

@@ -127,7 +127,7 @@ public class AuthServiceTests
     public async Task Login_of_an_inactive_user_fails_like_a_wrong_password()
     {
         var user = SeedUser("ana@example.com");
-        Deactivate(user);
+        TestUsers.Deactivate(user);
 
         var exception = await Assert.ThrowsAsync<InvalidCredentialsException>(() =>
             _authService.LoginAsync(new LoginRequest("ana@example.com", Password), CancellationToken.None));
@@ -185,7 +185,7 @@ public class AuthServiceTests
     {
         var user = SeedUser("ana@example.com");
         var login = await _authService.LoginAsync(new LoginRequest("ana@example.com", Password), CancellationToken.None);
-        Deactivate(user);
+        TestUsers.Deactivate(user);
 
         await Assert.ThrowsAsync<InvalidRefreshTokenException>(() =>
             _authService.RefreshAsync(new RefreshTokenRequest(login.RefreshToken), CancellationToken.None));
@@ -259,8 +259,4 @@ public class AuthServiceTests
         _users.Add(user);
         return user;
     }
-
-    // User has no deactivation method yet (admin user management is issue #19), so tests set the flag directly.
-    private static void Deactivate(User user) =>
-        typeof(User).GetProperty(nameof(User.IsActive))!.SetValue(user, false);
 }

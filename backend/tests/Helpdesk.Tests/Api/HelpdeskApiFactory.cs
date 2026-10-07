@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Tests.Api;
 
@@ -7,7 +9,11 @@ namespace Helpdesk.Tests.Api;
 /// Hosts the API in memory with its own settings, including a random signing key, so tests never read
 /// the developer's user secrets (loaded only in Development) and also run in CI.
 /// </summary>
-public sealed class HelpdeskApiFactory(string connectionString, IReadOnlyDictionary<string, string?>? overrides = null)
+/// <param name="configureServices">Runs after the API registers its services, so a test can replace or extend them.</param>
+public sealed class HelpdeskApiFactory(
+    string connectionString,
+    IReadOnlyDictionary<string, string?>? overrides = null,
+    Action<IServiceCollection>? configureServices = null)
     : WebApplicationFactory<Program>
 {
     public const string EnvironmentName = "Testing";
@@ -35,6 +41,11 @@ public sealed class HelpdeskApiFactory(string connectionString, IReadOnlyDiction
         foreach (var (key, value) in settings)
         {
             builder.UseSetting(key, value);
+        }
+
+        if (configureServices is not null)
+        {
+            builder.ConfigureTestServices(configureServices);
         }
     }
 }

@@ -1,6 +1,9 @@
 using System.Text.Json;
 using FluentValidation;
 using Helpdesk.Application.Authentication;
+using Helpdesk.Application.Common;
+using Helpdesk.Application.Tickets;
+using Helpdesk.Domain.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,9 +28,25 @@ internal sealed class ProblemDetailsExceptionHandler(IProblemDetailsService prob
                 Status = StatusCodes.Status401Unauthorized,
                 Detail = exception.Message
             },
-            EmailAlreadyRegisteredException => new ProblemDetails
+            EmailAlreadyRegisteredException or TicketRuleViolationException => new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,
+                Detail = exception.Message
+            },
+            // Only ticket changes let this reach the API; authentication handles its own conflicts.
+            ConcurrencyConflictException => new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Detail = "The ticket was changed by another request. Reload it and try again."
+            },
+            TicketNotFoundException => new ProblemDetails
+            {
+                Status = StatusCodes.Status404NotFound,
+                Detail = exception.Message
+            },
+            TicketActionForbiddenException => new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
                 Detail = exception.Message
             },
             _ => null

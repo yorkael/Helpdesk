@@ -45,9 +45,13 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
+        // Every test gets its own database, so a pool per connection string would keep idle connections open to
+        // databases no test uses again, until the server refuses new clients. Without pooling, a released
+        // connection is closed.
         return new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
-            Database = databaseName
+            Database = databaseName,
+            Pooling = false
         }.ConnectionString;
     }
 }

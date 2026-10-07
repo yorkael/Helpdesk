@@ -54,6 +54,32 @@ public sealed class CreateTicketRequestValidator : AbstractValidator<CreateTicke
     }
 }
 
+public sealed class AssignTicketRequestValidator : AbstractValidator<AssignTicketRequest>
+{
+    public AssignTicketRequestValidator(IUserRepository users)
+    {
+        // One message for an unknown, inactive or non-agent user. Stop skips the lookup when the id is missing.
+        RuleFor(request => request.AssigneeId)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .MustAsync(async (assigneeId, cancellationToken) =>
+                await users.GetByIdAsync(assigneeId, cancellationToken) is { IsActive: true, Role: UserRole.Agent })
+            .WithMessage("The assignee must be an active agent.");
+    }
+}
+
+public sealed class ChangeTicketStatusRequestValidator : AbstractValidator<ChangeTicketStatusRequest>
+{
+    public ChangeTicketStatusRequestValidator()
+    {
+        // Exact names only, as when creating and listing tickets. Whether the move is allowed is the domain's call.
+        RuleFor(request => request.Status)
+            .NotEmpty()
+            .IsEnumName(typeof(TicketStatus), caseSensitive: true)
+            .WithMessage($"'Status' must be one of: {AllowedValues.Statuses}.");
+    }
+}
+
 /// <summary>Every parameter is optional; a missing one passes and gets its default in the service.</summary>
 public sealed class ListTicketsRequestValidator : AbstractValidator<ListTicketsRequest>
 {

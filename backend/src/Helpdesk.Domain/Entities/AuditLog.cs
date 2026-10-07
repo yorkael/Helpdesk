@@ -1,3 +1,5 @@
+using Helpdesk.Domain.Enums;
+
 namespace Helpdesk.Domain.Entities;
 
 public class AuditLog
@@ -31,6 +33,32 @@ public class AuditLog
         oldValue: null,
         ticket.Status.ToString(),
         ticket.CreatedAt);
+
+    // Internal: only Ticket creates change entries, so a change and its entry cannot be built apart.
+    internal static AuditLog StatusChanged(
+        Ticket ticket,
+        TicketStatus previousStatus,
+        Guid actorId,
+        DateTimeOffset changedAt) => new(
+        ticket.Id,
+        actorId,
+        AuditFields.Status,
+        previousStatus.ToString(),
+        ticket.Status.ToString(),
+        changedAt);
+
+    /// <summary>Stores user ids, not names: a name can change, an id always points to the same user.</summary>
+    internal static AuditLog AssigneeChanged(
+        Ticket ticket,
+        Guid? previousAssigneeId,
+        Guid actorId,
+        DateTimeOffset changedAt) => new(
+        ticket.Id,
+        actorId,
+        AuditFields.Assignee,
+        previousAssigneeId?.ToString(),
+        ticket.AssignedToId?.ToString(),
+        changedAt);
 
     public Guid Id { get; private set; }
 

@@ -1,6 +1,10 @@
 using FluentValidation;
+using Helpdesk.Application.Common;
 using Helpdesk.Application.Tickets;
+using Helpdesk.Domain.Entities;
 using Helpdesk.Domain.Enums;
+using Helpdesk.Domain.Exceptions;
+using Helpdesk.Tests.Application.Authentication;
 
 namespace Helpdesk.Tests.Application.Tickets;
 
@@ -8,9 +12,11 @@ public class TicketServiceTests
 {
     private static readonly Guid CategoryId = Guid.NewGuid();
     private static readonly Guid CreatorId = Guid.NewGuid();
+    private static readonly Guid AdminId = Guid.NewGuid();
 
     private readonly InMemoryTicketRepository _tickets = new();
     private readonly InMemoryAuditLogRepository _auditLogs = new();
+    private readonly InMemoryUserRepository _users = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly FixedTimeProvider _time = new(new DateTimeOffset(2026, 10, 7, 9, 30, 0, TimeSpan.Zero));
     private readonly TicketService _ticketService;
@@ -23,6 +29,8 @@ public class TicketServiceTests
             _unitOfWork,
             new CreateTicketRequestValidator(new InMemoryCategoryRepository(CategoryId)),
             new ListTicketsRequestValidator(),
+            new AssignTicketRequestValidator(_users),
+            new ChangeTicketStatusRequestValidator(),
             _time);
     }
 
@@ -194,6 +202,308 @@ public class TicketServiceTests
     {
         await _ticketService.ListAsync(EmptyListRequest(), CreatorId, UserRole.Admin, CancellationToken.None);
 
+        Assert.Empty(_auditLogs.Entries);
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task Agent_takes_an_unassigned_ticket_and_the_change_is_audited_in_one_save()
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket();
+
+        var response = await _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(agent.Id), agent.Id, UserRole.Agent, CancellationToken.None);
+
+        Assert.Equal(agent.Id, ticket.AssignedToId);
+        Assert.Equal(agent.Id, response.AssignedToId);
+        var entry = Assert.Single(_auditLogs.Entries);
+        Assert.Equal(ticket.Id, entry.TicketId);
+        Assert.Equal(agent.Id, entry.UserId);
+        Assert.Equal("AssignedToId", entry.Field);
+        Assert.Null(entry.OldValue);
+        Assert.Equal(agent.Id.ToString(), entry.NewValue);
+        Assert.Equal(_time.Now, entry.ChangedAt);
+        Assert.Equal(1, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task Admin_reassigns_a_ticket_and_the_audit_keeps_both_assignees_and_the_admin_as_actor()
+    {
+        var first = SeedAgent("eva@example.com");
+        var second = SeedAgent("mario@example.com");
+        var ticket = SeedTicket(first.Id);
+
+        var response = await _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(second.Id), AdminId, UserRole.Admin, CancellationToken.None);
+
+        Assert.Equal(second.Id, response.AssignedToId);
+        var entry = Assert.Single(_auditLogs.Entries);
+        Assert.Equal(AdminId, entry.UserId);
+        Assert.Equal(first.Id.ToString(), entry.OldValue);
+        Assert.Equal(second.Id.ToString(), entry.NewValue);
+        Assert.Equal(1, _unitOfWork.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(UserRole.Agent, TicketVisibility.AssignedToUserOrUnassigned)]
+    [InlineData(UserRole.Admin, TicketVisibility.All)]
+    public async Task Assign_loads_the_ticket_within_the_callers_scope(UserRole role, TicketVisibility expected)
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket();
+        var actorId = role == UserRole.Agent ? agent.Id : AdminId;
+
+        await _ticketService.AssignAsync(ticket.Id, new AssignTicketRequest(agent.Id), actorId, role, CancellationToken.None);
+
+        Assert.Equal((expected, actorId), _tickets.LastVisibleLookup);
+    }
+
+    [Fact]
+    public async Task Agent_resending_their_own_id_on_their_ticket_changes_nothing()
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket(agent.Id);
+
+        var response = await _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(agent.Id), agent.Id, UserRole.Agent, CancellationToken.None);
+
+        Assert.Equal(agent.Id, response.AssignedToId);
+        Assert.Empty(_auditLogs.Entries);
+        Assert.Equal(0, _unitOfWork.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Agent_assigning_another_agent_is_forbidden_and_nothing_is_saved(bool ticketIsTheirs)
+    {
+        var agent = SeedAgent("eva@example.com");
+        var otherAgent = SeedAgent("mario@example.com");
+        var ticket = SeedTicket(ticketIsTheirs ? agent.Id : null);
+
+        await Assert.ThrowsAsync<TicketActionForbiddenException>(() => _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(otherAgent.Id), agent.Id, UserRole.Agent, CancellationToken.None));
+
+        Assert.Equal(ticketIsTheirs ? agent.Id : null, ticket.AssignedToId);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Assigning_a_ticket_that_cannot_be_loaded_is_not_found()
+    {
+        var agent = SeedAgent();
+
+        await Assert.ThrowsAsync<TicketNotFoundException>(() => _ticketService.AssignAsync(
+            Guid.NewGuid(), new AssignTicketRequest(agent.Id), AdminId, UserRole.Admin, CancellationToken.None));
+
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Invalid_assignee_is_rejected_before_the_ticket_is_loaded()
+    {
+        var inactiveAgent = SeedAgent();
+        TestUsers.Deactivate(inactiveAgent);
+        var ticket = SeedTicket();
+
+        await Assert.ThrowsAsync<ValidationException>(() => _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(inactiveAgent.Id), AdminId, UserRole.Admin, CancellationToken.None));
+
+        Assert.Null(_tickets.LastVisibleLookup);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Assigning_a_closed_ticket_breaks_a_domain_rule_and_saves_nothing()
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket();
+        ticket.ChangeStatus(TicketStatus.Closed, AdminId, _time.Now);
+
+        await Assert.ThrowsAsync<TicketRuleViolationException>(() => _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(agent.Id), AdminId, UserRole.Admin, CancellationToken.None));
+
+        Assert.Null(ticket.AssignedToId);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Unknown_ticket_is_reported_before_the_agent_role_rule()
+    {
+        var agent = SeedAgent("eva@example.com");
+        var otherAgent = SeedAgent("mario@example.com");
+
+        await Assert.ThrowsAsync<TicketNotFoundException>(() => _ticketService.AssignAsync(
+            Guid.NewGuid(), new AssignTicketRequest(otherAgent.Id), agent.Id, UserRole.Agent, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Agent_role_rule_is_checked_before_the_domain_rule()
+    {
+        var agent = SeedAgent("eva@example.com");
+        var otherAgent = SeedAgent("mario@example.com");
+        var ticket = SeedTicket();
+        ticket.ChangeStatus(TicketStatus.Closed, AdminId, _time.Now);
+
+        await Assert.ThrowsAsync<TicketActionForbiddenException>(() => _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(otherAgent.Id), agent.Id, UserRole.Agent, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Concurrent_assignment_surfaces_as_a_concurrency_conflict()
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket();
+        _unitOfWork.ExceptionOnNextSave = new ConcurrencyConflictException(new Exception());
+
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(() => _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(agent.Id), agent.Id, UserRole.Agent, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Agent_moves_their_ticket_to_in_progress_and_the_change_is_audited_in_one_save()
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket(agent.Id);
+
+        var response = await _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("InProgress"), agent.Id, UserRole.Agent, CancellationToken.None);
+
+        Assert.Equal("InProgress", response.Status);
+        var entry = Assert.Single(_auditLogs.Entries);
+        Assert.Equal(ticket.Id, entry.TicketId);
+        Assert.Equal(agent.Id, entry.UserId);
+        Assert.Equal("Status", entry.Field);
+        Assert.Equal("Open", entry.OldValue);
+        Assert.Equal("InProgress", entry.NewValue);
+        Assert.Equal(_time.Now, entry.ChangedAt);
+        Assert.Equal(1, _unitOfWork.SaveCount);
+    }
+
+    [Fact]
+    public async Task Admin_closes_an_unassigned_ticket()
+    {
+        var ticket = SeedTicket();
+
+        var response = await _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("Closed"), AdminId, UserRole.Admin, CancellationToken.None);
+
+        Assert.Equal("Closed", response.Status);
+        Assert.Equal(AdminId, Assert.Single(_auditLogs.Entries).UserId);
+    }
+
+    [Theory]
+    [InlineData(UserRole.Agent, TicketVisibility.AssignedToUserOrUnassigned)]
+    [InlineData(UserRole.Admin, TicketVisibility.All)]
+    public async Task Status_change_loads_the_ticket_within_the_callers_scope(UserRole role, TicketVisibility expected)
+    {
+        var ticket = SeedTicket();
+        var actorId = Guid.NewGuid();
+
+        await _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("Closed"), actorId, role, CancellationToken.None);
+
+        Assert.Equal((expected, actorId), _tickets.LastVisibleLookup);
+    }
+
+    [Fact]
+    public async Task Changing_to_the_current_status_changes_nothing()
+    {
+        var ticket = SeedTicket();
+
+        var response = await _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("Open"), AdminId, UserRole.Admin, CancellationToken.None);
+
+        Assert.Equal("Open", response.Status);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Disallowed_transition_breaks_a_domain_rule_and_saves_nothing()
+    {
+        var agent = SeedAgent();
+        var ticket = SeedTicket(agent.Id);
+
+        await Assert.ThrowsAsync<TicketRuleViolationException>(() => _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("Resolved"), agent.Id, UserRole.Agent, CancellationToken.None));
+
+        Assert.Equal(TicketStatus.Open, ticket.Status);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Unassigned_ticket_cannot_be_moved_to_in_progress()
+    {
+        var ticket = SeedTicket();
+
+        await Assert.ThrowsAsync<TicketRuleViolationException>(() => _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("InProgress"), AdminId, UserRole.Admin, CancellationToken.None));
+
+        AssertNothingSaved();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("open")]
+    [InlineData("1")]
+    public async Task Invalid_status_is_rejected_before_the_ticket_is_loaded(string status)
+    {
+        var ticket = SeedTicket();
+
+        await Assert.ThrowsAsync<ValidationException>(() => _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest(status), AdminId, UserRole.Admin, CancellationToken.None));
+
+        Assert.Null(_tickets.LastVisibleLookup);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Changing_the_status_of_a_ticket_that_cannot_be_loaded_is_not_found()
+    {
+        await Assert.ThrowsAsync<TicketNotFoundException>(() => _ticketService.ChangeStatusAsync(
+            Guid.NewGuid(), new ChangeTicketStatusRequest("Closed"), AdminId, UserRole.Admin, CancellationToken.None));
+
+        AssertNothingSaved();
+    }
+
+    // The request is also invalid, so passing proves the role is checked before validation and lookup.
+    [Fact]
+    public async Task Client_cannot_assign_or_change_status_even_on_their_own_ticket()
+    {
+        var ticket = SeedTicket();
+
+        await Assert.ThrowsAsync<TicketActionForbiddenException>(() => _ticketService.AssignAsync(
+            ticket.Id, new AssignTicketRequest(Guid.Empty), CreatorId, UserRole.Client, CancellationToken.None));
+        await Assert.ThrowsAsync<TicketActionForbiddenException>(() => _ticketService.ChangeStatusAsync(
+            ticket.Id, new ChangeTicketStatusRequest("open"), CreatorId, UserRole.Client, CancellationToken.None));
+
+        Assert.Null(_tickets.LastVisibleLookup);
+        AssertNothingSaved();
+    }
+
+    private User SeedAgent(string email = "eva@example.com")
+    {
+        var agent = new User("Eva Agent", email, "hash", UserRole.Agent);
+        _users.Add(agent);
+        return agent;
+    }
+
+    // Assigned through the domain, so every stored ticket is one the application could have produced.
+    private Ticket SeedTicket(Guid? assigneeId = null)
+    {
+        var ticket = new Ticket("Printer offline", "It shows error 42.", TicketPriority.High, CategoryId, CreatorId, _time.Now);
+        if (assigneeId is { } id)
+        {
+            ticket.Assign(id, AdminId, _time.Now);
+        }
+
+        _tickets.Add(ticket);
+        return ticket;
+    }
+
+    private void AssertNothingSaved()
+    {
         Assert.Empty(_auditLogs.Entries);
         Assert.Equal(0, _unitOfWork.SaveCount);
     }

@@ -39,5 +39,8 @@ internal sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
             .WithOne()
             .HasForeignKey(comment => comment.TicketId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Npgsql maps a uint row version to the xmin system column, so no physical column is created.
+        builder.Property(ticket => ticket.Version).IsRowVersion();
     }
 }

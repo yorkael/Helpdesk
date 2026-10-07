@@ -65,6 +65,22 @@ public class MigrationTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Ticket_row_version_is_the_xmin_system_column_not_a_physical_one()
+    {
+        await using var context = await fixture.CreateMigratedDatabaseContextAsync();
+        var seed = await SeedTicketAsync(context);
+
+        // information_schema lists only user-defined columns; system columns such as xmin never appear there.
+        var physicalColumns = await context.Database
+            .SqlQuery<string>($"SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_name = 'tickets'")
+            .ToListAsync();
+        var stored = await context.Tickets.SingleAsync(t => t.Id == seed.Ticket.Id);
+
+        Assert.DoesNotContain("xmin", physicalColumns);
+        Assert.NotEqual(0u, stored.Version);
+    }
+
+    [Fact]
     public async Task Deleting_a_category_with_tickets_is_restricted()
     {
         await using var context = await fixture.CreateMigratedDatabaseContextAsync();

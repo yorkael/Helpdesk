@@ -44,16 +44,30 @@ internal sealed class TicketRepository(HelpdeskDbContext context) : ITicketRepos
         return new PagedResponse<TicketListItem>(items, query.Page, query.PageSize, totalCount);
     }
 
+    /// <summary>
+    /// Tracked, so the caller's changes are saved and checked against the row version it read.
+    /// Not a SELECT ... FOR UPDATE: nothing is locked; a concurrent change is detected when saving.
+    /// </summary>
+    public Task<Ticket?> GetVisibleAsync(
+        Guid id,
+        TicketVisibility visibility,
+        Guid userId,
+        CancellationToken cancellationToken) =>
+        VisibleTo(visibility, userId).SingleOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
+
+    // The one place that decides which tickets a user may see; listing and loading one ticket both use it.
+    private IQueryable<Ticket> VisibleTo(TicketVisibility visibility, Guid userId) => visibility switch
+    {
+        TicketVisibility.All => context.Tickets,
+        TicketVisibility.CreatedByUser => context.Tickets.Where(ticket => ticket.CreatedById == userId),
+        TicketVisibility.AssignedToUserOrUnassigned => context.Tickets.Where(ticket =>
+            ticket.AssignedToId == userId || ticket.AssignedToId == null),
+        _ => throw new ArgumentOutOfRangeException(nameof(visibility), visibility, "Unknown visibility.")
+    };
+
     private IQueryable<Ticket> Filter(TicketListQuery query)
     {
-        IQueryable<Ticket> tickets = query.Visibility switch
-        {
-            TicketVisibility.All => context.Tickets,
-            TicketVisibility.CreatedByUser => context.Tickets.Where(ticket => ticket.CreatedById == query.UserId),
-            TicketVisibility.AssignedToUserOrUnassigned => context.Tickets.Where(ticket =>
-                ticket.AssignedToId == query.UserId || ticket.AssignedToId == null),
-            _ => throw new ArgumentOutOfRangeException(nameof(query), query.Visibility, "Unknown visibility.")
-        };
+        var tickets = VisibleTo(query.Visibility, query.UserId);
 
         if (query.Status is { } status)
         {

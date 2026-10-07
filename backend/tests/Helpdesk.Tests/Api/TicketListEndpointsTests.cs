@@ -329,7 +329,8 @@ public class TicketListEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetim
         var ticket = new Ticket(title, "It shows error 42.", priority, categoryId ?? _generalId, creatorId, UtcNow);
         context.Tickets.Add(ticket);
 
-        // Ticket cannot be assigned or change status until HU-6, so the columns are set directly.
+        // Set directly instead of through Assign and ChangeStatus, so a test can start from any status
+        // without walking the transition table.
         context.Entry(ticket).Property(t => t.Status).CurrentValue = status;
         context.Entry(ticket).Property(t => t.AssignedToId).CurrentValue = assignedToId;
 
