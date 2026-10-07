@@ -3,13 +3,6 @@ using Helpdesk.Domain.Entities;
 
 namespace Helpdesk.Tests.Application.Authentication;
 
-internal sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
-{
-    public DateTimeOffset Now { get; set; } = now;
-
-    public override DateTimeOffset GetUtcNow() => Now;
-}
-
 internal sealed class InMemoryUserRepository : IUserRepository
 {
     public List<User> Users { get; } = [];
@@ -38,25 +31,6 @@ internal sealed class InMemoryRefreshTokenRepository : IRefreshTokenRepository
             Tokens.Where(token => token.UserId == userId && token.IsActive(now)).ToList());
 
     public void Add(RefreshToken refreshToken) => Tokens.Add(refreshToken);
-}
-
-internal sealed class FakeUnitOfWork : IUnitOfWork
-{
-    public int SaveCount { get; private set; }
-
-    public Exception? ExceptionOnNextSave { get; set; }
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
-    {
-        if (ExceptionOnNextSave is { } exception)
-        {
-            ExceptionOnNextSave = null;
-            throw exception;
-        }
-
-        SaveCount++;
-        return Task.CompletedTask;
-    }
 }
 
 /// <summary>
