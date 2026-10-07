@@ -16,6 +16,14 @@ public sealed class HelpdeskApiFactory(string connectionString, IReadOnlyDiction
     {
         builder.UseEnvironment(EnvironmentName);
 
+        // Development validates the container on startup; Testing does not by default, so a missing
+        // registration would pass the tests and only fail under dotnet run.
+        builder.UseDefaultServiceProvider(options =>
+        {
+            options.ValidateOnBuild = true;
+            options.ValidateScopes = true;
+        });
+
         var settings = TestConfiguration.CreateSettings(connectionString);
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
         {
