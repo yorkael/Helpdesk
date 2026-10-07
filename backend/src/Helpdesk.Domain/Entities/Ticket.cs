@@ -55,6 +55,9 @@ public class Ticket
 
     public IReadOnlyCollection<Comment> Comments => _comments.AsReadOnly();
 
+    // Optimistic concurrency token; persistence maps it to PostgreSQL's xmin system column.
+    public uint Version { get; private set; }
+
     /// <returns>The audit entry for the change, or null when the ticket already has this status.</returns>
     /// <exception cref="TicketRuleViolationException">
     /// The transition is not in <see cref="TicketStatusTransitions"/>, or the new status needs an assignee.

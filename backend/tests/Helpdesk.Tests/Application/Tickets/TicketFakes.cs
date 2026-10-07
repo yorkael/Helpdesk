@@ -20,6 +20,14 @@ internal sealed class InMemoryTicketRepository : ITicketRepository
         LastListQuery = query;
         return Task.FromResult(ListResult);
     }
+
+    /// <summary>Returns any stored ticket with the id; scoping by visibility is covered against the database.</summary>
+    public Task<Ticket?> GetVisibleAsync(
+        Guid id,
+        TicketVisibility visibility,
+        Guid userId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Tickets.SingleOrDefault(ticket => ticket.Id == id));
 }
 
 internal sealed class InMemoryAuditLogRepository : IAuditLogRepository
