@@ -3,6 +3,7 @@ using Helpdesk.Application.Authentication;
 using Helpdesk.Application.Common;
 using Helpdesk.Domain.Entities;
 using Helpdesk.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Tests.Persistence;
@@ -88,6 +89,67 @@ public class RepositoryTests(PostgreSqlFixture fixture)
         secondCopy!.Revoke(UtcNow);
         await Assert.ThrowsAsync<ConcurrencyConflictException>(() =>
             second.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Category_exists_only_for_a_stored_id()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        Guid seededCategoryId;
+        await using (var context = PostgreSqlFixture.CreateContext(connectionString))
+        {
+            seededCategoryId = await context.Categories.Select(c => c.Id).FirstAsync();
+        }
+
+        var categories = Services(connectionString).GetRequiredService<ICategoryRepository>();
+
+        Assert.True(await categories.ExistsAsync(seededCategoryId, CancellationToken.None));
+        Assert.False(await categories.ExistsAsync(Guid.NewGuid(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Ticket_and_its_audit_entry_are_stored_by_one_save()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        var creator = await SaveUserAsync(connectionString, "ana@example.com");
+        var services = Services(connectionString);
+        var ticket = await NewTicketAsync(connectionString, creator.Id);
+
+        services.GetRequiredService<ITicketRepository>().Add(ticket);
+        services.GetRequiredService<IAuditLogRepository>().Add(AuditLog.TicketCreated(ticket));
+        await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
+
+        await using var context = PostgreSqlFixture.CreateContext(connectionString);
+        Assert.Equal(ticket.Id, (await context.Tickets.SingleAsync()).Id);
+        Assert.Equal(ticket.Id, (await context.AuditLogs.SingleAsync()).TicketId);
+    }
+
+    [Fact]
+    public async Task Failed_audit_insert_rolls_back_the_ticket()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        var creator = await SaveUserAsync(connectionString, "ana@example.com");
+        var services = Services(connectionString);
+        var ticket = await NewTicketAsync(connectionString, creator.Id);
+
+        services.GetRequiredService<ITicketRepository>().Add(ticket);
+        // An unknown user breaks the audit entry's foreign key, so the save fails after the ticket insert.
+        services.GetRequiredService<IAuditLogRepository>()
+            .Add(new AuditLog(ticket.Id, Guid.NewGuid(), AuditFields.Status, null, "Open", UtcNow));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None));
+
+        await using var context = PostgreSqlFixture.CreateContext(connectionString);
+        Assert.Equal(0, await context.Tickets.CountAsync());
+        Assert.Equal(0, await context.AuditLogs.CountAsync());
+    }
+
+    private static async Task<Ticket> NewTicketAsync(string connectionString, Guid creatorId)
+    {
+        await using var context = PostgreSqlFixture.CreateContext(connectionString);
+        var categoryId = await context.Categories.Select(c => c.Id).FirstAsync();
+        return new Ticket("Printer offline", "It shows error 42.", TicketPriority.High, categoryId, creatorId, UtcNow);
     }
 
     private static IServiceProvider Services(string connectionString) =>

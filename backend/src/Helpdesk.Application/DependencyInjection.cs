@@ -1,5 +1,6 @@
 using FluentValidation;
 using Helpdesk.Application.Authentication;
+using Helpdesk.Application.Tickets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -12,6 +13,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
         services.AddScoped<AuthService>();
+        services.AddScoped<TicketService>();
 
         return services;
     }

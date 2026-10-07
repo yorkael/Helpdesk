@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Helpdesk.Api.Authentication;
 using Helpdesk.Application.Authentication;
 using Helpdesk.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -53,7 +54,7 @@ public sealed class AuthController(AuthService authService) : ControllerBase
     [ProducesResponseType<UserResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     public UserResponse Me() => new(
-        Guid.Parse(User.FindFirstValue(AccessTokenClaimTypes.Subject)!),
+        User.GetUserId(),
         User.FindFirstValue(AccessTokenClaimTypes.Name)!,
         User.FindFirstValue(AccessTokenClaimTypes.Email)!,
         User.FindFirstValue(AccessTokenClaimTypes.Role)!);
