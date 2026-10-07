@@ -49,4 +49,49 @@ public sealed class TicketsController(TicketService ticketService) : ControllerB
         var tickets = await ticketService.ListAsync(request, User.GetUserId(), User.GetUserRole(), cancellationToken);
         return Ok(tickets);
     }
+
+    /// <summary>
+    /// An agent takes an unassigned ticket for themselves; an admin assigns or reassigns any ticket to an active
+    /// agent. The user making the change comes from the access token. Sending the current assignee changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// A ticket the caller may not see answers 404, like one that does not exist, so its existence is not revealed.
+    /// </remarks>
+    [Authorize(Policy = AuthorizationPolicies.StaffOnly)]
+    [HttpPut("{id:guid}/assignee")]
+    [ProducesResponseType<TicketResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Assign(Guid id, AssignTicketRequest request, CancellationToken cancellationToken)
+    {
+        var ticket = await ticketService.AssignAsync(id, request, User.GetUserId(), User.GetUserRole(), cancellationToken);
+        return Ok(ticket);
+    }
+
+    /// <summary>
+    /// Moves a ticket to another status if the transition table allows it. The user making the change comes from
+    /// the access token. Sending the current status changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// A ticket the caller may not see answers 404, like one that does not exist, so its existence is not revealed.
+    /// </remarks>
+    [Authorize(Policy = AuthorizationPolicies.StaffOnly)]
+    [HttpPut("{id:guid}/status")]
+    [ProducesResponseType<TicketResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ChangeStatus(
+        Guid id,
+        ChangeTicketStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var ticket = await ticketService.ChangeStatusAsync(id, request, User.GetUserId(), User.GetUserRole(), cancellationToken);
+        return Ok(ticket);
+    }
 }
