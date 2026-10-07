@@ -262,6 +262,45 @@ public class TicketTests
             NewTicket().Assign(AgentId, ActorId, ChangedAt.ToOffset(TimeSpan.FromHours(-5))));
     }
 
+    [Theory]
+    [InlineData(TicketStatus.Open)]
+    [InlineData(TicketStatus.InProgress)]
+    [InlineData(TicketStatus.WaitingOnCustomer)]
+    [InlineData(TicketStatus.Resolved)]
+    public void Ticket_that_is_not_closed_accepts_comments_without_changing(TicketStatus status)
+    {
+        var ticket = AssignedTicketIn(status);
+
+        var comment = ticket.CreateComment(ActorId, "Any update?", isInternal: false, ChangedAt);
+
+        Assert.Equal(ticket.Id, comment.TicketId);
+        Assert.Equal(status, ticket.Status);
+        Assert.Equal(AgentId, ticket.AssignedToId);
+        Assert.Empty(ticket.Comments);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Closed_ticket_cannot_receive_comments(bool isInternal)
+    {
+        var ticket = AssignedTicketIn(TicketStatus.Closed);
+
+        var exception = Assert.Throws<TicketRuleViolationException>(() =>
+            ticket.CreateComment(ActorId, "Any update?", isInternal, ChangedAt));
+
+        Assert.Equal("A closed ticket cannot receive comments.", exception.Message);
+        Assert.Equal(TicketStatus.Closed, ticket.Status);
+    }
+
+    [Fact]
+    public void Invalid_comment_on_a_closed_ticket_is_reported_as_an_invalid_argument()
+    {
+        var ticket = AssignedTicketIn(TicketStatus.Closed);
+
+        Assert.Throws<ArgumentException>(() => ticket.CreateComment(Guid.Empty, "Any update?", false, ChangedAt));
+    }
+
     private static Ticket NewTicket() =>
         new("Printer offline", "It shows error 42.", TicketPriority.High, Guid.NewGuid(), Guid.NewGuid(), UtcNow);
 

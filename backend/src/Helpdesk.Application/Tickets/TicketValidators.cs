@@ -12,6 +12,9 @@ internal static class TicketLimits
     // The column is unbounded text; this only caps the request size.
     public const int DescriptionMaxLength = 4000;
 
+    // Also unbounded text; only caps the request size.
+    public const int CommentMaxLength = 4000;
+
     public const int DefaultPageSize = 20;
 
     // Bounds the rows a single request can pull from the database.
@@ -77,6 +80,21 @@ public sealed class ChangeTicketStatusRequestValidator : AbstractValidator<Chang
             .NotEmpty()
             .IsEnumName(typeof(TicketStatus), caseSensitive: true)
             .WithMessage($"'Status' must be one of: {AllowedValues.Statuses}.");
+    }
+}
+
+public sealed class CreateCommentRequestValidator : AbstractValidator<CreateCommentRequest>
+{
+    public CreateCommentRequestValidator()
+    {
+        // NotEmpty also rejects whitespace only; the domain trims what passes.
+        RuleFor(request => request.Content)
+            .NotEmpty()
+            .MaximumLength(TicketLimits.CommentMaxLength);
+
+        // Required rather than defaulting to public, so a forgotten flag cannot show an internal note to the client.
+        RuleFor(request => request.IsInternal)
+            .NotNull();
     }
 }
 

@@ -36,6 +36,27 @@ internal sealed class InMemoryTicketRepository : ITicketRepository
     }
 }
 
+internal sealed class InMemoryCommentRepository : ICommentRepository
+{
+    public List<Comment> Comments { get; } = [];
+
+    /// <summary>The filter the service asked for; applying it is the real repository's job.</summary>
+    public (Guid TicketId, CommentVisibility Visibility)? LastListLookup { get; private set; }
+
+    public IReadOnlyList<CommentResponse> ListResult { get; set; } = [];
+
+    public void Add(Comment comment) => Comments.Add(comment);
+
+    public Task<IReadOnlyList<CommentResponse>> ListAsync(
+        Guid ticketId,
+        CommentVisibility visibility,
+        CancellationToken cancellationToken)
+    {
+        LastListLookup = (ticketId, visibility);
+        return Task.FromResult(ListResult);
+    }
+}
+
 internal sealed class InMemoryAuditLogRepository : IAuditLogRepository
 {
     public List<AuditLog> Entries { get; } = [];
