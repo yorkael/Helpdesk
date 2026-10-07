@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Helpdesk.Application.Tickets;
 using Helpdesk.Infrastructure.Authentication;
 using Helpdesk.Infrastructure.Persistence;
 using Helpdesk.Tests.Persistence;
@@ -24,6 +25,16 @@ public class ApiStartupTests
         var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 
         Assert.Contains("'Jwt:SigningKey' is not configured", exception.Message);
+    }
+
+    // The factory builds the container with ValidateOnBuild, so a missing dependency would fail here too.
+    [Fact]
+    public async Task Ticket_comment_service_resolves_with_all_its_dependencies()
+    {
+        await using var factory = new HelpdeskApiFactory(TestConfiguration.UnusedConnectionString);
+        using var scope = factory.Services.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<TicketCommentService>());
     }
 
     [Fact]

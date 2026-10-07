@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddSingleton(jwtOptions);

@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
         services.AddScoped<AuthService>();
         services.AddScoped<TicketService>();
+        services.AddScoped<TicketCommentService>();
 
         return services;
     }
