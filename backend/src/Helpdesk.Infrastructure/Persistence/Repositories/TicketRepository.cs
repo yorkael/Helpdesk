@@ -1,14 +1,94 @@
 using Helpdesk.Application.Abstractions;
 using Helpdesk.Application.Tickets;
 using Helpdesk.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Helpdesk.Infrastructure.Persistence.Repositories;
 
 internal sealed class TicketRepository(HelpdeskDbContext context) : ITicketRepository
 {
+    private const string LikeEscapeCharacter = @"\";
+
     public void Add(Ticket ticket) => context.Tickets.Add(ticket);
 
-    // Placeholder until stage 2 of HU-5 implements the query.
-    public Task<PagedResponse<TicketListItem>> ListAsync(TicketListQuery query, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    /// <summary>
+    /// Two queries per call: a count and one page projected straight to the list item, with the names
+    /// joined in SQL. Projecting to a non-entity type means nothing is tracked.
+    /// </summary>
+    public async Task<PagedResponse<TicketListItem>> ListAsync(TicketListQuery query, CancellationToken cancellationToken)
+    {
+        var tickets = Filter(query);
+
+        var totalCount = await tickets.CountAsync(cancellationToken);
+
+        // Id breaks ties between tickets created at the same instant, so pages never overlap or skip rows.
+        var items = await tickets
+            .OrderByDescending(ticket => ticket.CreatedAt)
+            .ThenByDescending(ticket => ticket.Id)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(ticket => new TicketListItem(
+                ticket.Id,
+                ticket.Title,
+                ticket.Status.ToString(),
+                ticket.Priority.ToString(),
+                ticket.CategoryId,
+                ticket.Category.Name,
+                ticket.CreatedById,
+                ticket.CreatedBy.Name,
+                ticket.AssignedToId,
+                ticket.AssignedTo != null ? ticket.AssignedTo.Name : null,
+                ticket.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        return new PagedResponse<TicketListItem>(items, query.Page, query.PageSize, totalCount);
+    }
+
+    private IQueryable<Ticket> Filter(TicketListQuery query)
+    {
+        IQueryable<Ticket> tickets = query.Visibility switch
+        {
+            TicketVisibility.All => context.Tickets,
+            TicketVisibility.CreatedByUser => context.Tickets.Where(ticket => ticket.CreatedById == query.UserId),
+            TicketVisibility.AssignedToUserOrUnassigned => context.Tickets.Where(ticket =>
+                ticket.AssignedToId == query.UserId || ticket.AssignedToId == null),
+            _ => throw new ArgumentOutOfRangeException(nameof(query), query.Visibility, "Unknown visibility.")
+        };
+
+        if (query.Status is { } status)
+        {
+            tickets = tickets.Where(ticket => ticket.Status == status);
+        }
+
+        if (query.Priority is { } priority)
+        {
+            tickets = tickets.Where(ticket => ticket.Priority == priority);
+        }
+
+        if (query.AssignedToId is { } assignedToId)
+        {
+            tickets = tickets.Where(ticket => ticket.AssignedToId == assignedToId);
+        }
+
+        if (query.CategoryId is { } categoryId)
+        {
+            tickets = tickets.Where(ticket => ticket.CategoryId == categoryId);
+        }
+
+        if (query.Search is { } search)
+        {
+            var pattern = $"%{EscapeLikeWildcards(search)}%";
+            tickets = tickets.Where(ticket =>
+                EF.Functions.ILike(ticket.Title, pattern, LikeEscapeCharacter) ||
+                EF.Functions.ILike(ticket.Description, pattern, LikeEscapeCharacter));
+        }
+
+        return tickets;
+    }
+
+    // The escape character goes first, so the escapes added for % and _ are not escaped again.
+    private static string EscapeLikeWildcards(string text) => text
+        .Replace(LikeEscapeCharacter, LikeEscapeCharacter + LikeEscapeCharacter)
+        .Replace("%", LikeEscapeCharacter + "%")
+        .Replace("_", LikeEscapeCharacter + "_");
 }
