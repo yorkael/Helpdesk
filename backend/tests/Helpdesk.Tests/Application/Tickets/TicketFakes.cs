@@ -21,13 +21,19 @@ internal sealed class InMemoryTicketRepository : ITicketRepository
         return Task.FromResult(ListResult);
     }
 
+    /// <summary>The scope the service asked for; applying it is the real repository's job.</summary>
+    public (TicketVisibility Visibility, Guid UserId)? LastVisibleLookup { get; private set; }
+
     /// <summary>Returns any stored ticket with the id; scoping by visibility is covered against the database.</summary>
     public Task<Ticket?> GetVisibleAsync(
         Guid id,
         TicketVisibility visibility,
         Guid userId,
-        CancellationToken cancellationToken) =>
-        Task.FromResult(Tickets.SingleOrDefault(ticket => ticket.Id == id));
+        CancellationToken cancellationToken)
+    {
+        LastVisibleLookup = (visibility, userId);
+        return Task.FromResult(Tickets.SingleOrDefault(ticket => ticket.Id == id));
+    }
 }
 
 internal sealed class InMemoryAuditLogRepository : IAuditLogRepository

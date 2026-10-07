@@ -1,6 +1,14 @@
 using Helpdesk.Application.Abstractions;
+using Helpdesk.Domain.Entities;
 
 namespace Helpdesk.Tests.Application;
+
+internal static class TestUsers
+{
+    // User has no deactivation method yet (admin user management is issue #19), so tests set the flag directly.
+    public static void Deactivate(User user) =>
+        typeof(User).GetProperty(nameof(User.IsActive))!.SetValue(user, false);
+}
 
 internal sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
 {
