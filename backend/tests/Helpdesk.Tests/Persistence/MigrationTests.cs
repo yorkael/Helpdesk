@@ -24,6 +24,16 @@ public class MigrationTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task Migrations_seed_the_default_categories()
+    {
+        await using var context = await fixture.CreateMigratedDatabaseContextAsync();
+
+        var names = await context.Categories.Select(c => c.Name).OrderBy(name => name).ToListAsync();
+
+        Assert.Equal(["Account", "Billing", "General", "Technical issue"], names);
+    }
+
+    [Fact]
     public async Task Ticket_with_comment_and_audit_entry_round_trips()
     {
         await using var context = await fixture.CreateMigratedDatabaseContextAsync();
