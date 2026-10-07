@@ -111,4 +111,22 @@ public class Ticket
         AssignedToId = assigneeId;
         return AuditLog.AssigneeChanged(this, previousAssigneeId, actorId, changedAt);
     }
+
+    /// <summary>
+    /// Builds a comment on this ticket; the caller stores it, as with audit entries. It is not added to
+    /// <see cref="Comments"/>, which only holds comments loaded from storage.
+    /// </summary>
+    /// <exception cref="TicketRuleViolationException">The ticket is closed.</exception>
+    public Comment CreateComment(Guid authorId, string content, bool isInternal, DateTimeOffset createdAt)
+    {
+        // Built first so invalid arguments are reported before the rule, as in the other methods.
+        var comment = new Comment(Id, authorId, content, isInternal, createdAt);
+
+        if (Status == TicketStatus.Closed)
+        {
+            throw new TicketRuleViolationException("A closed ticket cannot receive comments.");
+        }
+
+        return comment;
+    }
 }

@@ -2,7 +2,8 @@ namespace Helpdesk.Domain.Entities;
 
 public class Comment
 {
-    public Comment(Guid ticketId, Guid authorId, string content, bool isInternal, DateTimeOffset createdAt)
+    // Internal: comments are created through Ticket.CreateComment, so a closed ticket cannot receive one.
+    internal Comment(Guid ticketId, Guid authorId, string content, bool isInternal, DateTimeOffset createdAt)
     {
         Id = Guid.CreateVersion7();
         TicketId = Guard.NotEmpty(ticketId, nameof(ticketId));

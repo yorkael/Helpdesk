@@ -38,7 +38,7 @@ public class MigrationTests(PostgreSqlFixture fixture)
     {
         await using var context = await fixture.CreateMigratedDatabaseContextAsync();
         var seed = await SeedTicketAsync(context);
-        context.Comments.Add(new Comment(seed.Ticket.Id, seed.Client.Id, "Still failing.", isInternal: false, UtcNow));
+        context.Comments.Add(seed.Ticket.CreateComment(seed.Client.Id, "Still failing.", isInternal: false, UtcNow));
         context.AuditLogs.Add(new AuditLog(seed.Ticket.Id, seed.Client.Id, "Status", null, "Open", UtcNow));
         await context.SaveChangesAsync();
 
@@ -141,7 +141,7 @@ public class MigrationTests(PostgreSqlFixture fixture)
     {
         await using var context = await fixture.CreateMigratedDatabaseContextAsync();
         var seed = await SeedTicketAsync(context);
-        context.Comments.Add(new Comment(seed.Ticket.Id, seed.Client.Id, "Any update?", isInternal: false, UtcNow));
+        context.Comments.Add(seed.Ticket.CreateComment(seed.Client.Id, "Any update?", isInternal: false, UtcNow));
         await context.SaveChangesAsync();
 
         await context.Tickets.Where(t => t.Id == seed.Ticket.Id).ExecuteDeleteAsync();
