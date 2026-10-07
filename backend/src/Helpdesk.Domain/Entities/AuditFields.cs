@@ -4,4 +4,6 @@ namespace Helpdesk.Domain.Entities;
 public static class AuditFields
 {
     public const string Status = nameof(Ticket.Status);
+
+    public const string Assignee = nameof(Ticket.AssignedToId);
 }
