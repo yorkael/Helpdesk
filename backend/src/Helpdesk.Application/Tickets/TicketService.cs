@@ -51,7 +51,7 @@ public sealed class TicketService(
         await listValidator.ValidateAndThrowAsync(request, cancellationToken);
 
         var query = new TicketListQuery(
-            VisibilityFor(role),
+            TicketVisibilities.For(role),
             userId,
             request.Status is null ? null : Enum.Parse<TicketStatus>(request.Status),
             request.Priority is null ? null : Enum.Parse<TicketPriority>(request.Priority),
@@ -121,7 +121,7 @@ public sealed class TicketService(
     }
 
     private async Task<Ticket> LoadVisibleAsync(Guid ticketId, Guid userId, UserRole role, CancellationToken cancellationToken) =>
-        await tickets.GetVisibleAsync(ticketId, VisibilityFor(role), userId, cancellationToken)
+        await tickets.GetVisibleAsync(ticketId, TicketVisibilities.For(role), userId, cancellationToken)
         ?? throw new TicketNotFoundException();
 
     // No entry means nothing changed, so there is nothing to save. Otherwise the change and its entry go in
@@ -136,15 +136,6 @@ public sealed class TicketService(
         auditLogs.Add(entry);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
-
-    // An unknown role must never widen the scope, so it fails instead of falling back to All.
-    private static TicketVisibility VisibilityFor(UserRole role) => role switch
-    {
-        UserRole.Admin => TicketVisibility.All,
-        UserRole.Agent => TicketVisibility.AssignedToUserOrUnassigned,
-        UserRole.Client => TicketVisibility.CreatedByUser,
-        _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role.")
-    };
 
     private static TicketResponse ToResponse(Ticket ticket) => new(
         ticket.Id,
