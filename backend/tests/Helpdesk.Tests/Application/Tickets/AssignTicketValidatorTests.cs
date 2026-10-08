@@ -28,12 +28,13 @@ public class AssignTicketValidatorTests
         result.ShouldNotHaveAnyValidationErrors();
     }
 
+    // Without Stop, the active-agent check would also run and add a second error.
     [Fact]
-    public async Task Missing_assignee_is_rejected()
+    public async Task Missing_assignee_is_reported_once()
     {
         var result = await _validator.TestValidateAsync(new AssignTicketRequest(Guid.Empty));
 
-        result.ShouldHaveValidationErrorFor(request => request.AssigneeId);
+        Assert.Single(result.ShouldHaveValidationErrorFor(request => request.AssigneeId));
     }
 
     [Fact]
