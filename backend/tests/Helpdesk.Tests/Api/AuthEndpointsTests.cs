@@ -273,6 +273,18 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
         }
     }
 
+    // 40 seconds: past the API's 30-second clock skew, so a wider skew would let it through.
+    [Fact]
+    public async Task Token_expired_beyond_the_clock_skew_is_rejected()
+    {
+        var options = _factory.Services.GetRequiredService<JwtOptions>();
+        var expired = CreateToken(
+            new SigningCredentials(options.SigningKey, JwtOptions.SigningAlgorithm),
+            expires: DateTime.UtcNow.AddSeconds(-40));
+
+        await AssertProblemAsync(await GetMeAsync(expired), HttpStatusCode.Unauthorized);
+    }
+
     private Task<HttpResponseMessage> RegisterAsync(string name, string email, string password) =>
         _client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(name, email, password));
 
@@ -297,17 +309,28 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
     }
 
     /// <summary>
-    /// A token with a valid lifetime and claims, and the API's issuer and audience unless others are given;
+    /// A token with valid claims, and the API's issuer and audience and a valid lifetime unless others are given;
     /// each test varies only the part it checks.
     /// </summary>
-    private string CreateToken(SigningCredentials? signingCredentials, string? issuer = null, string? audience = null)
+    private string CreateToken(
+        SigningCredentials? signingCredentials,
+        string? issuer = null,
+        string? audience = null,
+        DateTime? expires = null)
     {
         var options = _factory.Services.GetRequiredService<JwtOptions>();
+        var expiresAt = expires ?? DateTime.UtcNow.AddMinutes(5);
+
+        // Issued a full lifetime earlier: left to the defaults, nbf would be now, after an expiry in the past,
+        // and the token would be rejected for that instead of for having expired.
+        var issuedAt = expiresAt - options.AccessTokenLifetime;
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = issuer ?? options.Issuer,
             Audience = audience ?? options.Audience,
-            Expires = DateTime.UtcNow.AddMinutes(5),
+            IssuedAt = issuedAt,
+            NotBefore = issuedAt,
+            Expires = expiresAt,
             SigningCredentials = signingCredentials,
             Claims = new Dictionary<string, object>
             {
