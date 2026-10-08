@@ -10,5 +10,10 @@ public interface IUserRepository
 
     Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken);
 
+    /// <returns>The names of the users with these ids; ids that match no user are left out.</returns>
+    Task<IReadOnlyDictionary<Guid, string>> GetNamesAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken);
+
     void Add(User user);
 }

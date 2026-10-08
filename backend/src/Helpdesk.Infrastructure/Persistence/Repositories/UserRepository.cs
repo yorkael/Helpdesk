@@ -15,5 +15,14 @@ internal sealed class UserRepository(HelpdeskDbContext context) : IUserRepositor
     public Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken) =>
         context.Users.AnyAsync(user => user.Email == normalizedEmail, cancellationToken);
 
+    /// <summary>One query for all the ids. Only id and name are read, so no email leaves the database.</summary>
+    public async Task<IReadOnlyDictionary<Guid, string>> GetNamesAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken) =>
+        await context.Users
+            .Where(user => ids.Contains(user.Id))
+            .Select(user => new { user.Id, user.Name })
+            .ToDictionaryAsync(user => user.Id, user => user.Name, cancellationToken);
+
     public void Add(User user) => context.Users.Add(user);
 }

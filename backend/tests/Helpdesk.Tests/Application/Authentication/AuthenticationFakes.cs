@@ -16,6 +16,18 @@ internal sealed class InMemoryUserRepository : IUserRepository
     public Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken) =>
         Task.FromResult(Users.Any(user => user.Email == normalizedEmail));
 
+    /// <summary>The ids of each names lookup, so tests can count lookups and check what was asked for.</summary>
+    public List<IReadOnlyCollection<Guid>> NameLookups { get; } = [];
+
+    public Task<IReadOnlyDictionary<Guid, string>> GetNamesAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken)
+    {
+        NameLookups.Add(ids);
+        return Task.FromResult<IReadOnlyDictionary<Guid, string>>(
+            Users.Where(user => ids.Contains(user.Id)).ToDictionary(user => user.Id, user => user.Name));
+    }
+
     public void Add(User user) => Users.Add(user);
 }
 
