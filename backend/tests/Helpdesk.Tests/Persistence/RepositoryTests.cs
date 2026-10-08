@@ -29,6 +29,34 @@ public class RepositoryTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task User_names_are_found_by_id_and_unknown_ids_are_left_out()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        var ana = await SaveUserAsync(connectionString, "ana@example.com", name: "Ana Ruiz");
+        var luis = await SaveUserAsync(connectionString, "luis@example.com", UserRole.Agent, "Luis Vega");
+        await SaveUserAsync(connectionString, "eva@example.com", name: "Eva Not Asked");
+
+        var names = await Services(connectionString).GetRequiredService<IUserRepository>()
+            .GetNamesAsync([ana.Id, luis.Id, Guid.NewGuid()], CancellationToken.None);
+
+        Assert.Equal(
+            new Dictionary<Guid, string> { [ana.Id] = "Ana Ruiz", [luis.Id] = "Luis Vega" },
+            names);
+    }
+
+    [Fact]
+    public async Task No_ids_give_no_names()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        await SaveUserAsync(connectionString, "ana@example.com");
+
+        var names = await Services(connectionString).GetRequiredService<IUserRepository>()
+            .GetNamesAsync([], CancellationToken.None);
+
+        Assert.Empty(names);
+    }
+
+    [Fact]
     public async Task Saving_a_duplicate_email_reports_it_as_already_registered()
     {
         var connectionString = await fixture.CreateMigratedDatabaseAsync();
@@ -292,10 +320,14 @@ public class RepositoryTests(PostgreSqlFixture fixture)
     private static IServiceProvider Services(string connectionString) =>
         TestConfiguration.CreateInfrastructureServices(connectionString);
 
-    private static async Task<User> SaveUserAsync(string connectionString, string email, UserRole role = UserRole.Client)
+    private static async Task<User> SaveUserAsync(
+        string connectionString,
+        string email,
+        UserRole role = UserRole.Client,
+        string name = "Test User")
     {
         var services = Services(connectionString);
-        var user = new User("Test User", email, "hash", role);
+        var user = new User(name, email, "hash", role);
         services.GetRequiredService<IUserRepository>().Add(user);
         await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
         return user;

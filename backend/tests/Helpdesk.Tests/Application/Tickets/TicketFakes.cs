@@ -62,6 +62,10 @@ internal sealed class InMemoryAuditLogRepository : IAuditLogRepository
     public List<AuditLog> Entries { get; } = [];
 
     public void Add(AuditLog entry) => Entries.Add(entry);
+
+    /// <summary>Keeps the order entries were added in; ordering is covered against the database.</summary>
+    public Task<IReadOnlyList<AuditLog>> ListByTicketAsync(Guid ticketId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AuditLog>>(Entries.Where(entry => entry.TicketId == ticketId).ToList());
 }
 
 internal sealed class InMemoryCategoryRepository(params Guid[] existingIds) : ICategoryRepository
