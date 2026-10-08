@@ -129,6 +129,15 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Refresh_without_a_token_is_a_validation_error()
+    {
+        var response = await _client.PostAsJsonAsync("/api/auth/refresh", new { });
+
+        var problem = await AssertProblemAsync(response, HttpStatusCode.BadRequest);
+        Assert.True(problem.GetProperty("errors").TryGetProperty("refreshToken", out _));
+    }
+
+    [Fact]
     public async Task Unknown_email_and_wrong_password_return_the_same_401_problem()
     {
         await RegisterAsync("Ana Ruiz", "ana@example.com", Password);
