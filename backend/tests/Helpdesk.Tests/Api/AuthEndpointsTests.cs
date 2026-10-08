@@ -247,6 +247,32 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
         await AssertProblemAsync(await GetMeAsync(unsigned), HttpStatusCode.Unauthorized);
     }
 
+    // Signed with the API's own key, so the issuer or the audience is the only reason left to reject it.
+    // The foreign values are literals: derived from the settings, a change there would move them too.
+    [Theory]
+    [InlineData(null, null, HttpStatusCode.OK)]
+    [InlineData("untrusted-issuer", null, HttpStatusCode.Unauthorized)]
+    [InlineData(null, "untrusted-audience", HttpStatusCode.Unauthorized)]
+    public async Task Validly_signed_token_is_accepted_only_for_this_issuer_and_audience(
+        string? issuer,
+        string? audience,
+        HttpStatusCode expected)
+    {
+        var options = _factory.Services.GetRequiredService<JwtOptions>();
+        var token = CreateToken(new SigningCredentials(options.SigningKey, JwtOptions.SigningAlgorithm), issuer, audience);
+
+        var response = await GetMeAsync(token);
+
+        if (expected == HttpStatusCode.OK)
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+        else
+        {
+            await AssertProblemAsync(response, expected);
+        }
+    }
+
     private Task<HttpResponseMessage> RegisterAsync(string name, string email, string password) =>
         _client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(name, email, password));
 
@@ -270,12 +296,17 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
         return _client.SendAsync(request);
     }
 
-    /// <summary>A token with valid issuer, audience, lifetime and claims; only its signature is wrong.</summary>
-    private static string CreateToken(SigningCredentials? signingCredentials) =>
-        new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+    /// <summary>
+    /// A token with a valid lifetime and claims, and the API's issuer and audience unless others are given;
+    /// each test varies only the part it checks.
+    /// </summary>
+    private string CreateToken(SigningCredentials? signingCredentials, string? issuer = null, string? audience = null)
+    {
+        var options = _factory.Services.GetRequiredService<JwtOptions>();
+        return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
-            Issuer = "helpdesk-tests",
-            Audience = "helpdesk-tests-client",
+            Issuer = issuer ?? options.Issuer,
+            Audience = audience ?? options.Audience,
             Expires = DateTime.UtcNow.AddMinutes(5),
             SigningCredentials = signingCredentials,
             Claims = new Dictionary<string, object>
@@ -286,6 +317,7 @@ public class AuthEndpointsTests(PostgreSqlFixture fixture) : IAsyncLifetime
                 [AccessTokenClaimTypes.Role] = "Admin"
             }
         });
+    }
 
     // traceId differs per request by design; every other member must match.
     private static void AssertSameProblem(JsonElement expected, JsonElement actual)
