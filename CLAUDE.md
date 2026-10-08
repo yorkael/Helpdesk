@@ -49,6 +49,7 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Fijar el SDK con `global.json` (SDK 10.x).
 - Compilar: `dotnet build backend/Helpdesk.sln`
 - Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia y de API usan Testcontainers con `postgres:18`; la fábrica de pruebas de API inyecta su propia configuración y clave aleatoria, no usa user-secrets)
+- Pruebas unitarias (Application y Domain, sin Docker): `dotnet test backend/Helpdesk.sln --filter "FullyQualifiedName~Helpdesk.Tests.Application|FullyQualifiedName~Helpdesk.Tests.Domain"` (`ApplicationTestIsolationTests` falla si una prueba de esos namespaces usa un fixture de base de datos)
 - Base de datos local: `docker compose up -d` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`)
 - Herramientas locales: `dotnet tool restore` (instala `dotnet-ef` desde `dotnet-tools.json`)
 - Cadena de conexión local: user-secrets de Api, clave `ConnectionStrings:DefaultConnection`; fuera de local, variable `ConnectionStrings__DefaultConnection`

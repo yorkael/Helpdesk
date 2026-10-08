@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using FluentValidation.TestHelper;
 using Helpdesk.Application.Authentication;
 
@@ -29,12 +30,14 @@ public class AuthenticationValidatorTests
         result.ShouldHaveValidationErrorFor(request => request.Name);
     }
 
-    [Fact]
-    public void Registration_name_longer_than_the_column_is_rejected()
+    [Theory]
+    [InlineData(100, true)]
+    [InlineData(101, false)]
+    public void Registration_name_cannot_exceed_the_column_size(int length, bool isValid)
     {
-        var result = _registerValidator.TestValidate(new RegisterRequest(new string('a', 101), "ana@example.com", ValidPassword));
+        var result = _registerValidator.TestValidate(new RegisterRequest(new string('a', length), "ana@example.com", ValidPassword));
 
-        result.ShouldHaveValidationErrorFor(request => request.Name);
+        AssertValidity(result, request => request.Name, isValid);
     }
 
     [Theory]
@@ -47,14 +50,14 @@ public class AuthenticationValidatorTests
         result.ShouldHaveValidationErrorFor(request => request.Email);
     }
 
-    [Fact]
-    public void Registration_email_longer_than_the_column_is_rejected()
+    [Theory]
+    [InlineData(256, true)]
+    [InlineData(257, false)]
+    public void Registration_email_cannot_exceed_the_column_size(int length, bool isValid)
     {
-        var email = new string('a', 245) + "@example.com";
+        var result = _registerValidator.TestValidate(new RegisterRequest("Ana Ruiz", EmailOfLength(length), ValidPassword));
 
-        var result = _registerValidator.TestValidate(new RegisterRequest("Ana Ruiz", email, ValidPassword));
-
-        result.ShouldHaveValidationErrorFor(request => request.Email);
+        AssertValidity(result, request => request.Email, isValid);
     }
 
     [Theory]
@@ -66,14 +69,16 @@ public class AuthenticationValidatorTests
     {
         var result = _registerValidator.TestValidate(new RegisterRequest("Ana Ruiz", "ana@example.com", new string('p', length)));
 
-        if (isValid)
-        {
-            result.ShouldNotHaveValidationErrorFor(request => request.Password);
-        }
-        else
-        {
-            result.ShouldHaveValidationErrorFor(request => request.Password);
-        }
+        AssertValidity(result, request => request.Password, isValid);
+    }
+
+    // Long enough to pass the length rule, so only NotEmpty can reject it.
+    [Fact]
+    public void Registration_password_of_only_spaces_is_rejected()
+    {
+        var result = _registerValidator.TestValidate(new RegisterRequest("Ana Ruiz", "ana@example.com", new string(' ', 8)));
+
+        result.ShouldHaveValidationErrorFor(request => request.Password);
     }
 
     [Fact]
@@ -93,12 +98,24 @@ public class AuthenticationValidatorTests
         result.ShouldNotHaveAnyValidationErrors();
     }
 
-    [Fact]
-    public void Login_password_longer_than_128_is_rejected()
+    [Theory]
+    [InlineData(256, true)]
+    [InlineData(257, false)]
+    public void Login_email_cannot_exceed_the_column_size(int length, bool isValid)
     {
-        var result = _loginValidator.TestValidate(new LoginRequest("ana@example.com", new string('p', 129)));
+        var result = _loginValidator.TestValidate(new LoginRequest(EmailOfLength(length), ValidPassword));
 
-        result.ShouldHaveValidationErrorFor(request => request.Password);
+        AssertValidity(result, request => request.Email, isValid);
+    }
+
+    [Theory]
+    [InlineData(128, true)]
+    [InlineData(129, false)]
+    public void Login_password_cannot_exceed_128_characters(int length, bool isValid)
+    {
+        var result = _loginValidator.TestValidate(new LoginRequest("ana@example.com", new string('p', length)));
+
+        AssertValidity(result, request => request.Password, isValid);
     }
 
     [Theory]
@@ -111,11 +128,34 @@ public class AuthenticationValidatorTests
         result.ShouldHaveValidationErrorFor(request => request.RefreshToken);
     }
 
-    [Fact]
-    public void Refresh_token_longer_than_128_is_rejected()
+    [Theory]
+    [InlineData(128, true)]
+    [InlineData(129, false)]
+    public void Refresh_token_cannot_exceed_128_characters(int length, bool isValid)
     {
-        var result = _refreshTokenValidator.TestValidate(new RefreshTokenRequest(new string('t', 129)));
+        var result = _refreshTokenValidator.TestValidate(new RefreshTokenRequest(new string('t', length)));
 
-        result.ShouldHaveValidationErrorFor(request => request.RefreshToken);
+        AssertValidity(result, request => request.RefreshToken, isValid);
+    }
+
+    private static string EmailOfLength(int length)
+    {
+        const string domain = "@example.com";
+        return new string('a', length - domain.Length) + domain;
+    }
+
+    private static void AssertValidity<TRequest, TProperty>(
+        TestValidationResult<TRequest> result,
+        Expression<Func<TRequest, TProperty>> property,
+        bool isValid)
+    {
+        if (isValid)
+        {
+            result.ShouldNotHaveValidationErrorFor(property);
+        }
+        else
+        {
+            result.ShouldHaveValidationErrorFor(property);
+        }
     }
 }

@@ -253,6 +253,36 @@ public class AuthServiceTests
         Assert.Equal(savesAfterFirstLogout, _unitOfWork.SaveCount);
     }
 
+    [Fact]
+    public async Task Logout_losing_a_concurrent_change_still_succeeds()
+    {
+        SeedUser("ana@example.com");
+        var login = await _authService.LoginAsync(new LoginRequest("ana@example.com", Password), CancellationToken.None);
+        _unitOfWork.ExceptionOnNextSave = new ConcurrencyConflictException(new Exception());
+
+        var exception = await Record.ExceptionAsync(() =>
+            _authService.LogoutAsync(new RefreshTokenRequest(login.RefreshToken), CancellationToken.None));
+
+        Assert.Null(exception);
+        Assert.Null(_unitOfWork.ExceptionOnNextSave);
+    }
+
+    // The conflict is on the save that revokes every session; the client still gets the usual rejection.
+    [Fact]
+    public async Task Reusing_a_rotated_token_is_rejected_even_when_revoking_every_session_conflicts()
+    {
+        SeedUser("ana@example.com");
+        var login = await _authService.LoginAsync(new LoginRequest("ana@example.com", Password), CancellationToken.None);
+        await _authService.RefreshAsync(new RefreshTokenRequest(login.RefreshToken), CancellationToken.None);
+        _unitOfWork.ExceptionOnNextSave = new ConcurrencyConflictException(new Exception());
+
+        var exception = await Assert.ThrowsAsync<InvalidRefreshTokenException>(() =>
+            _authService.RefreshAsync(new RefreshTokenRequest(login.RefreshToken), CancellationToken.None));
+
+        Assert.Equal("The refresh token is invalid or expired.", exception.Message);
+        Assert.Null(_unitOfWork.ExceptionOnNextSave);
+    }
+
     private User SeedUser(string email)
     {
         var user = new User("Ana Ruiz", email, _passwordHasher.Hash(Password), UserRole.Client);
