@@ -1,4 +1,5 @@
 using Helpdesk.Application.Abstractions;
+using Helpdesk.Application.Categories;
 using Helpdesk.Application.Tickets;
 using Helpdesk.Domain.Entities;
 
@@ -77,4 +78,7 @@ internal sealed class InMemoryCategoryRepository(params Guid[] existingIds) : IC
         LookupCount++;
         return Task.FromResult(existingIds.Contains(id));
     }
+
+    public Task<IReadOnlyList<CategoryResponse>> ListAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Listing depends on the database collation, so it is covered against the database.");
 }
