@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<TicketService>();
         services.AddScoped<TicketCommentService>();
+        services.AddScoped<TicketHistoryService>();
 
         return services;
     }
