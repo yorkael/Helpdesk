@@ -136,6 +136,14 @@ dotnet run --project backend/src/Helpdesk.Api
 
 `dotnet test` requires Docker to be running: the persistence and API tests start a disposable PostgreSQL 18 container with Testcontainers. The API tests host the application in memory with their own settings and a random signing key, so they do not need user secrets.
 
+The unit tests (Application and Domain) never touch the database (the Application tests use in-memory fakes), so they do not need Docker. To run only them:
+
+```bash
+dotnet test backend/Helpdesk.sln --filter "FullyQualifiedName~Helpdesk.Tests.Application|FullyQualifiedName~Helpdesk.Tests.Domain"
+```
+
+A guard test fails if a test in those namespaces uses a database fixture, so the filter stays free of Docker.
+
 The API listens on http://localhost:5038 and fails at startup if the connection string or the JWT settings are missing or invalid. In Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
 
 ### Frontend
