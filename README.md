@@ -2,7 +2,7 @@
 
 A support ticket system built as a public portfolio project: a layered ASP.NET Core backend and a React frontend.
 
-**Status:** Sprint 2 complete: the backend API covers authentication, tickets, assignment, status changes, comments and audit history. Next is Sprint 3: Docker, CI, the frontend UI and deployment.
+**Status:** Sprint 3 in progress. The backend API covers authentication, tickets, assignment, status changes, comments and audit history, and the whole stack (PostgreSQL, migrations, API and frontend) runs with Docker Compose. Still to come in Sprint 3: CI, the frontend UI and deployment.
 
 ## Tech stack
 
@@ -14,6 +14,7 @@ A support ticket system built as a public portfolio project: a layered ASP.NET C
 | Tests | xUnit, Testcontainers, WebApplicationFactory |
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Tooling | pnpm, oxlint |
+| Containers | Docker multi-stage images, Docker Compose, nginx |
 
 ## Architecture
 
@@ -36,6 +37,8 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 ├── backend/
 │   ├── Helpdesk.sln
 │   ├── Directory.Build.props   # shared settings: net10.0, nullable, warnings as errors
+│   ├── Dockerfile              # API image (target runtime) and migrations runner (target migrator)
+│   ├── Dockerfile.dockerignore # build context allow-list for backend/Dockerfile
 │   ├── src/
 │   │   ├── Helpdesk.Api/
 │   │   ├── Helpdesk.Application/
@@ -44,10 +47,13 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 │   └── tests/
 │       └── Helpdesk.Tests/
 ├── frontend/                   # Vite + React + TypeScript + Tailwind CSS
+│   ├── Dockerfile              # builds the app and serves it with unprivileged nginx
+│   ├── .dockerignore           # build context allow-list
+│   └── nginx.conf              # static files, SPA fallback and /api/ proxy to the API
 ├── docs/                       # project specification and plan
 ├── .github/workflows/          # CI workflows (empty for now)
 ├── .env.example
-├── docker-compose.yml          # local PostgreSQL
+├── docker-compose.yml          # PostgreSQL, migrations, API and frontend
 ├── dotnet-tools.json           # local .NET tools (dotnet-ef)
 └── global.json                 # pins the .NET SDK to 10.x
 ```
@@ -59,7 +65,7 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Node.js](https://nodejs.org/) 22.12 or later
 - [pnpm](https://pnpm.io/installation) (the version is pinned in `frontend/package.json`)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (local database and integration tests)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (full stack, local database and integration tests)
 
 ### Environment variables
 
@@ -69,16 +75,77 @@ Copy the example file and fill in your local values:
 cp .env.example .env
 ```
 
-`.env` is ignored by Git. `docker compose` reads the `POSTGRES_*` variables from it.
+`.env` is ignored by Git. `docker compose` reads it; the API run with `dotnet run` does not (it uses user secrets, see below).
+
+| Variable | Required | Used for |
+|---|---|---|
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Always: compose refuses to start without them | Database name and credentials; compose also builds the API connection string from them |
+| `POSTGRES_PORT` | No (default `5432`) | Host port of the database, bound to `127.0.0.1` |
+| `Jwt__SigningKey` | Full stack only, not for `docker compose up -d db` | JWT signing key: at least 32 random bytes encoded as base64 (see [JWT signing key](#jwt-signing-key)) |
+| `API_PORT` | No (default `8080`) | Host port of the API, bound to `127.0.0.1` |
+| `WEB_PORT` | No (default `8081`) | Host port of the frontend, bound to `127.0.0.1` |
+
+### Run the full stack with Docker
+
+Requires Docker Desktop. Copy `.env.example` to `.env`, fill in the `POSTGRES_*` values and generate a `Jwt__SigningKey`:
+
+```bash
+openssl rand -base64 48
+```
+
+Or in PowerShell 5.1 or 7:
+
+```powershell
+$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [Convert]::ToBase64String($bytes)
+```
+
+Then, from the repository root:
+
+```bash
+docker compose up --build
+```
+
+| Service | URL | Notes |
+|---|---|---|
+| `web` | http://127.0.0.1:8081 | The frontend. It proxies `/api/` to the API, so the browser talks to a single origin |
+| `api` | http://127.0.0.1:8080 | The API, running in `Production`: it does not expose the OpenAPI document |
+| `db` | `127.0.0.1:5432` | PostgreSQL 18, with data in the `pgdata` volume |
+| `migrate` | none | Applies the migrations and exits |
+
+The ports come from `WEB_PORT`, `API_PORT` and `POSTGRES_PORT`. Compose starts the services in order: `migrate` waits until the database is healthy, the API waits until `migrate` finishes successfully, and the frontend starts after the API.
+
+**Migrations.** The `migrate` service runs an EF Core migrations bundle that applies the migrations committed in the repository and exits. The API still never migrates the database on startup. The bundle is idempotent: on every later `docker compose up` it applies only the pending migrations, usually none.
+
+Stop the stack with:
+
+```bash
+docker compose down
+```
+
+> **Warning:** `docker compose down -v` also deletes the `pgdata` volume, which holds the database, including the one used for local development. Use it only when you want to start from an empty database.
+
+After changing code, rebuild the images with `docker compose up --build`.
+
+Known limitations:
+
+- Secrets reach the containers as environment variables, so they are visible with `docker inspect`.
+- A `;` in `POSTGRES_PASSWORD` breaks the connection string that compose builds from it.
+- The API has no healthcheck until it exposes a health endpoint ([#34](https://github.com/yorkael/Helpdesk/issues/34)); the frontend only waits for the API container to start.
+- A missing `Jwt__SigningKey` is detected by the application, not by compose: `migrate` fails with `'Jwt:SigningKey' is not configured` and the API does not start.
+- `migrate` receives the JWT signing key only to pass the startup validation it shares with the API; it does not use it.
+- HTTPS redirection has no effect in the container, which serves plain HTTP; TLS arrives with the deployment (HU-14).
+- GSS encryption is disabled in the connection string (`GSS Encryption Mode=Disable`) because the image has no Kerberos library.
 
 ### Local database
 
-From the repository root:
+To run the API with `dotnet run` and the frontend with `pnpm dev`, start only the database, from the repository root:
 
 ```bash
-docker compose up -d                 # PostgreSQL 18 on 127.0.0.1:${POSTGRES_PORT}
+docker compose up -d db              # PostgreSQL 18 on 127.0.0.1:${POSTGRES_PORT}; Jwt__SigningKey not needed
 dotnet tool restore                  # installs dotnet-ef from dotnet-tools.json
 ```
+
+`docker compose up -d` without `db` starts the whole stack instead.
 
 The API reads the connection string from `ConnectionStrings:DefaultConnection`. For local development store it with user secrets, outside the repository:
 
@@ -122,9 +189,9 @@ To add a migration after changing the model:
 dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations
 ```
 
-Migrations are applied explicitly; the API does not migrate the database on startup.
+Migrations are applied explicitly; the API does not migrate the database on startup. In the full Docker stack the `migrate` service applies them (see [Run the full stack with Docker](#run-the-full-stack-with-docker)).
 
-The migrations seed four categories: `General`, `Technical issue`, `Billing` and `Account`. Categories are listed in name order with PostgreSQL's ICU collation `und-x-icu`, so the server must be built with ICU support; the official `postgres:18` image, used by `docker-compose.yml` and by the tests, is.
+The migrations seed four categories: `General`, `Technical issue`, `Billing` and `Account`. Categories are listed in name order with PostgreSQL's ICU collation `und-x-icu`, so the server must be built with ICU support; the official PostgreSQL 18 image is, both as `postgres:18.6-trixie` in `docker-compose.yml` and as `postgres:18` in the tests.
 
 ### Staff users
 
@@ -134,7 +201,7 @@ Public sign-up only creates clients, and there is no endpoint yet to create agen
 docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "UPDATE users SET role = 'Agent' WHERE email = '<email>';"
 ```
 
-Use `Admin` instead of `Agent` for an admin. Log in again after the change: the role travels in the access token, so tokens issued before it keep the old role.
+The command works the same whether you started only the database or the full stack. Use `Admin` instead of `Agent` for an admin. Log in again after the change: the role travels in the access token, so tokens issued before it keep the old role.
 
 ### Backend
 
@@ -156,7 +223,7 @@ dotnet test backend/Helpdesk.sln --filter "FullyQualifiedName~Helpdesk.Tests.App
 
 A guard test fails if a test in those namespaces uses a database fixture, so the filter stays free of Docker.
 
-The API listens on http://localhost:5038 and fails at startup if the connection string or the JWT settings are missing or invalid. In Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
+With `dotnet run`, the API listens on http://localhost:5038 and fails at startup if the connection string or the JWT settings are missing or invalid. In Development the OpenAPI document is served at http://localhost:5038/openapi/v1.json.
 
 ### Frontend
 
@@ -224,6 +291,7 @@ Known limitations:
 
 - Specification, architecture and backlog: [docs/Helpdesk_Especificacion_y_Plan.pdf](docs/Helpdesk_Especificacion_y_Plan.pdf) (in Spanish)
 - Progress by sprint: [GitHub Project](https://github.com/users/yorkael/projects/1)
+- Sprint 3: containerized stack with Docker Compose (done, [#11](https://github.com/yorkael/Helpdesk/issues/11)); CI with GitHub Actions ([#12](https://github.com/yorkael/Helpdesk/issues/12)), the React UI ([#13](https://github.com/yorkael/Helpdesk/issues/13)) and deployment ([#14](https://github.com/yorkael/Helpdesk/issues/14)) are pending.
 
 ## License
 
