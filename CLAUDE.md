@@ -3,11 +3,14 @@
 Sistema de tickets de soporte. Proyecto público de portafolio de Yorkael, construido por etapas con Claude Code. La especificación completa (requisitos, arquitectura, backlog por sprints) está en `docs/Helpdesk_Especificacion_y_Plan.pdf`. Léela antes de proponer cualquier cosa.
 
 ## Stack
-- Backend: ASP.NET Core .NET 10 (LTS), C#, EF Core, PostgreSQL, FluentValidation, Serilog, xUnit
+- Backend: ASP.NET Core .NET 10 (LTS), C#, EF Core, PostgreSQL, FluentValidation, xUnit, Testcontainers
   (El PDF de especificación dice .NET 8; esa parte quedó desactualizada. Usar .NET 10: .NET 8 y 9 terminan soporte el 10 de noviembre de 2026.)
-- Frontend: React, TypeScript, Vite, Tailwind CSS, Zustand
-- DevOps: Docker, docker-compose, GitHub Actions
-- Despliegue: backend en Railway, frontend en Vercel
+  Planned: Serilog (requisito no funcional del PDF, sin HU asignada).
+- Frontend: React, TypeScript, Vite, Tailwind CSS, oxlint
+  Planned: Zustand (HU-13, Sprint 3).
+- DevOps: docker-compose, hoy solo con PostgreSQL local
+  Planned: Dockerfiles y compose con API y frontend (HU-11), GitHub Actions (HU-12), ambos del Sprint 3.
+- Despliegue (planned, HU-14): backend en Railway, frontend en Vercel
 
 ## Arquitectura (backend)
 Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.Infrastructure` implementa las interfaces de Application. Domain no depende de ningún otro proyecto ni de paquetes externos. Pruebas en `Helpdesk.Tests`.
@@ -50,10 +53,11 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Compilar: `dotnet build backend/Helpdesk.sln`
 - Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia y de API usan Testcontainers con `postgres:18`; la fábrica de pruebas de API inyecta su propia configuración y clave aleatoria, no usa user-secrets)
 - Pruebas unitarias (Application y Domain, sin Docker): `dotnet test backend/Helpdesk.sln --filter "FullyQualifiedName~Helpdesk.Tests.Application|FullyQualifiedName~Helpdesk.Tests.Domain"` (`ApplicationTestIsolationTests` falla si una prueba de esos namespaces usa un fixture de base de datos)
-- Base de datos local: `docker compose up -d` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`)
+- Ejecutar la API: `dotnet run --project backend/src/Helpdesk.Api` (http://localhost:5038; en Development, OpenAPI en http://localhost:5038/openapi/v1.json)
+- Base de datos local: `docker compose up -d` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`). PostgreSQL debe tener ICU: el listado de categorías ordena con la collation `und-x-icu` (la imagen oficial `postgres:18` la trae)
 - Herramientas locales: `dotnet tool restore` (instala `dotnet-ef` desde `dotnet-tools.json`)
 - Cadena de conexión local: user-secrets de Api, clave `ConnectionStrings:DefaultConnection`; fuera de local, variable `ConnectionStrings__DefaultConnection`
 - Clave de firma JWT local (mínimo 32 bytes aleatorios en base64; sin ella la API y `dotnet ef` no arrancan): user-secrets de Api, clave `Jwt:SigningKey`; fuera de local, variable `Jwt__SigningKey`. Generarla en PowerShell 5.1 o 7: `$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); dotnet user-secrets set "Jwt:SigningKey" ([Convert]::ToBase64String($bytes)) --project backend/src/Helpdesk.Api`; alternativa: `openssl rand -base64 48`
 - Aplicar migraciones: `dotnet ef database update --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api`
 - Nueva migración: `dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations`
-- Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`
+- Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`; lint con `pnpm lint` (oxlint)
