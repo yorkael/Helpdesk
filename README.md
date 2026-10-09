@@ -124,6 +124,18 @@ dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --
 
 Migrations are applied explicitly; the API does not migrate the database on startup.
 
+The migrations seed four categories: `General`, `Technical issue`, `Billing` and `Account`. Categories are listed in name order with PostgreSQL's ICU collation `und-x-icu`, so the server must be built with ICU support; the official `postgres:18` image, used by `docker-compose.yml` and by the tests, is.
+
+### Staff users
+
+Public sign-up only creates clients, and there is no endpoint yet to create agents or admins ([#19](https://github.com/yorkael/Helpdesk/issues/19)). To try assignment, status changes or the audit history locally, register a user through the API and change its role in the database, with the `POSTGRES_USER` and `POSTGRES_DB` values from `.env`:
+
+```bash
+docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "UPDATE users SET role = 'Agent' WHERE email = '<email>';"
+```
+
+Use `Admin` instead of `Agent` for an admin. Log in again after the change: the role travels in the access token, so tokens issued before it keep the old role.
+
 ### Backend
 
 From the repository root:
@@ -206,6 +218,7 @@ Known limitations:
 
 - An access token that was already issued stays valid until it expires, for up to 15 minutes, even after the user is deactivated or their role changes. Access tokens are not checked against the database on each request; the short lifetime bounds this window, and refreshing is rejected immediately for inactive users.
 - There is no rate limiting or lockout on the authentication endpoints yet ([#20](https://github.com/yorkael/Helpdesk/issues/20)).
+- There is no endpoint to create agents or admins yet ([#19](https://github.com/yorkael/Helpdesk/issues/19)); see [Staff users](#staff-users).
 
 ## Roadmap
 
