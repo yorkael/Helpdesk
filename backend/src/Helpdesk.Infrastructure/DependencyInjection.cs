@@ -11,7 +11,6 @@ namespace Helpdesk.Infrastructure;
 public static class DependencyInjection
 {
     private const string ConnectionStringName = "DefaultConnection";
-    private static readonly TimeSpan DatabaseHealthCheckTimeout = TimeSpan.FromSeconds(3);
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -30,10 +29,11 @@ public static class DependencyInjection
             .UseNpgsql(connectionString)
             .UseSnakeCaseNamingConvention());
 
-        // Without a timeout, a database that accepts the connection but never answers holds the check for the
-        // whole Npgsql connection timeout (15 seconds by default), longer than the container healthcheck waits.
+        // No registration timeout: it only cancels a token, which Npgsql stops honoring once the server accepts the
+        // connection, so a database that never answers would still hold the check. The deadline lives in the check
+        // as Npgsql's connection Timeout, which covers the TCP connection, the startup handshake and authentication.
         services.AddHealthChecks()
-            .AddCheck<DatabaseHealthCheck>("database", timeout: DatabaseHealthCheckTimeout);
+            .AddCheck<DatabaseHealthCheck>("database");
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
