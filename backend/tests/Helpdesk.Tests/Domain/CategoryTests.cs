@@ -11,6 +11,9 @@ public class CategoryTests
 
         Assert.Equal("Hardware", category.Name);
         Assert.NotEqual(Guid.Empty, category.Id);
+
+        // HU-12 negative check: fails on purpose to prove that the backend check blocks the merge.
+        Assert.True(false);
     }
 
     [Theory]
