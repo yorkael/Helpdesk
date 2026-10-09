@@ -156,15 +156,45 @@ pnpm dev
 
 The app runs on http://localhost:5173.
 
-## Authentication
+## API
 
-| Endpoint | Access | Result |
-|---|---|---|
-| `POST /api/auth/register` | anonymous | `201` with the new user; public sign-up always creates a `Client` |
-| `POST /api/auth/login` | anonymous | `200` with an access token and a refresh token |
-| `POST /api/auth/refresh` | anonymous | `200` with a new token pair; the refresh token used is revoked |
-| `POST /api/auth/logout` | anonymous | `204`, also for unknown or already revoked tokens |
-| `GET /api/auth/me` | authenticated | `200` with the caller as described by the access token |
+| Method | Route | Access | Result |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | anonymous | `201` with the new user; public sign-up always creates a `Client` |
+| `POST` | `/api/auth/login` | anonymous | `200` with an access token and a refresh token |
+| `POST` | `/api/auth/refresh` | anonymous | `200` with a new token pair; the refresh token used is revoked |
+| `POST` | `/api/auth/logout` | anonymous | `204`, also for unknown or already revoked tokens |
+| `GET` | `/api/auth/me` | authenticated | `200` with the caller as described by the access token |
+| `POST` | `/api/tickets` | `ClientOnly` | `201` with the new ticket, created as `Open` |
+| `GET` | `/api/tickets` | authenticated | `200` with a page of the tickets the caller may see |
+| `PUT` | `/api/tickets/{id}/assignee` | `StaffOnly` | `200` with the ticket assigned to an active agent |
+| `PUT` | `/api/tickets/{id}/status` | `StaffOnly` | `200` with the ticket in its new status |
+| `POST` | `/api/tickets/{id}/comments` | authenticated | `201` with the new comment |
+| `GET` | `/api/tickets/{id}/comments` | authenticated | `200` with the ticket's comments, oldest first |
+| `GET` | `/api/tickets/{id}/history` | `AdminOnly` | `200` with the ticket's audit history, oldest first |
+| `GET` | `/api/categories` | authenticated | `200` with every category, ordered by name |
+
+### Tickets
+
+- **Visibility** depends on the caller's role, read from the access token: admins see every ticket, agents see tickets assigned to them or unassigned, and clients see the tickets they created. A ticket outside the caller's scope answers `404`, like one that does not exist.
+- **Listing** accepts `page`, `pageSize` (default 20, maximum 100), `status`, `priority`, `assignedToId`, `categoryId` and `search`, a case-insensitive match on the title or description. Results are newest first, and the response includes `totalCount`.
+- **Priorities** are `Low`, `Medium`, `High` and `Urgent`. The creator comes from the access token; a client cannot set the assignee or the status.
+- **Assignment:** an agent can only assign a ticket to themselves; an admin can assign or reassign any ticket. A closed ticket cannot be assigned.
+- **Status changes** follow this table; any other move answers `409`, and sending the current status changes nothing. `InProgress`, `WaitingOnCustomer` and `Resolved` require an assignee.
+
+  | From | Allowed targets |
+  |---|---|
+  | `Open` | `InProgress`, `Closed` |
+  | `InProgress` | `WaitingOnCustomer`, `Resolved` |
+  | `WaitingOnCustomer` | `InProgress`, `Resolved` |
+  | `Resolved` | `InProgress`, `Closed` |
+  | `Closed` | none |
+
+- **Comments** can be public or internal. Only admins and agents can write or read internal comments; clients get public ones only. A closed ticket receives no comments.
+- **Audit history** records the ticket's creation, assignment and status changes with the user and time of each change. Comments are not audited.
+- **Concurrent changes** to the same ticket are detected with optimistic concurrency; the losing request answers `409`.
+
+### Authentication
 
 - **Passwords** are hashed with PBKDF2-HMAC-SHA512, 210,000 iterations and a random salt (ASP.NET Core Identity's `PasswordHasher`). Older hashes are upgraded on the next successful login.
 - **Access tokens** are JWTs signed with HS256 that expire after 15 minutes. They carry `sub`, `email`, `name`, `role` and `jti`.
