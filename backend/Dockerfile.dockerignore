@@ -2,6 +2,7 @@
 # backend build needs, so new files (and secrets) never reach the context by default.
 *
 !global.json
+!dotnet-tools.json
 !backend/Directory.Build.props
 !backend/src/
 
