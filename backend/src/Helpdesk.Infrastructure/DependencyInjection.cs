@@ -29,6 +29,12 @@ public static class DependencyInjection
             .UseNpgsql(connectionString)
             .UseSnakeCaseNamingConvention());
 
+        // No registration timeout: it only cancels a token, which Npgsql stops honoring once the server accepts the
+        // connection, so a database that never answers would still hold the check. The deadline lives in the check
+        // as Npgsql's connection Timeout, which covers the TCP connection, the startup handshake and authentication.
+        services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>("database");
+
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();

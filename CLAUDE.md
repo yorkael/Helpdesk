@@ -8,7 +8,7 @@ Sistema de tickets de soporte. Proyecto público de portafolio de Yorkael, const
   Planned: Serilog (requisito no funcional del PDF, sin HU asignada).
 - Frontend: React, TypeScript, Vite, Tailwind CSS, oxlint
   Planned: Zustand (HU-13, Sprint 3).
-- DevOps: Dockerfiles multi-stage (`backend/Dockerfile` con targets `runtime` y `migrator`, `frontend/Dockerfile` con nginx sin root) y docker-compose con PostgreSQL, migrate (EF migrations bundle), API y frontend (HU-11)
+- DevOps: Dockerfiles multi-stage (`backend/Dockerfile` con targets `runtime` y `migrator`, `frontend/Dockerfile` con nginx sin root) y docker-compose con PostgreSQL, migrate (EF migrations bundle), API y frontend (HU-11). Healthcheck de la api sobre `GET /health` (#34): bash con `/dev/tcp` porque la imagen no trae curl ni wget, envuelto en `timeout 4` porque el timeout de Docker deja procesos `head` colgados si la API no responde; `web` espera a que la api esté healthy
   Planned: GitHub Actions (HU-12, Sprint 3).
 - Despliegue (planned, HU-14): backend en Railway, frontend en Vercel
 
@@ -53,9 +53,9 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Compilar: `dotnet build backend/Helpdesk.sln`
 - Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia y de API usan Testcontainers con `postgres:18`; la fábrica de pruebas de API inyecta su propia configuración y clave aleatoria, no usa user-secrets)
 - Pruebas unitarias (Application y Domain, sin Docker): `dotnet test backend/Helpdesk.sln --filter "FullyQualifiedName~Helpdesk.Tests.Application|FullyQualifiedName~Helpdesk.Tests.Domain"` (`ApplicationTestIsolationTests` falla si una prueba de esos namespaces usa un fixture de base de datos)
-- Ejecutar la API: `dotnet run --project backend/src/Helpdesk.Api` (http://localhost:5038; en Development, OpenAPI en http://localhost:5038/openapi/v1.json)
+- Ejecutar la API: `dotnet run --project backend/src/Helpdesk.Api` (http://localhost:5038; en Development, OpenAPI en http://localhost:5038/openapi/v1.json). Salud: `GET /health`, anónimo, `200 Healthy` o `503 Unhealthy` según PostgreSQL acepte una conexión (límite de 3 s en el `Timeout` de Npgsql dentro de `DatabaseHealthCheck`; no comprueba esquema ni migraciones)
 - Base de datos local (solo la base, sin clave JWT): `docker compose up -d db` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`). PostgreSQL debe tener ICU: el listado de categorías ordena con la collation `und-x-icu` (la imagen oficial de PostgreSQL 18 la trae)
-- Stack completo: `docker compose up --build` (requiere `Jwt__SigningKey` en `.env`; web en http://127.0.0.1:8081 con proxy de `/api/`, API en http://127.0.0.1:8080 en Production, sin OpenAPI). Detener con `docker compose down`; nunca `down -v` en el proyecto por defecto: borra `pgdata`, la base local
+- Stack completo: `docker compose up --build` (requiere `Jwt__SigningKey` en `.env`; web en http://127.0.0.1:8081 con proxy de `/api/`, API en http://127.0.0.1:8080 en Production, sin OpenAPI; web arranca cuando la api está healthy; si la api está unhealthy, p. ej. porque no alcanza la base, `up` falla con `dependency failed to start` y web no arranca). `/health` solo en el puerto de la API: por el del web, nginx devuelve el `index.html`. Detener con `docker compose down`; nunca `down -v` en el proyecto por defecto: borra `pgdata`, la base local
 - Pruebas del compose: siempre con un proyecto y un env-file aparte para no tocar la base local, p. ej. `docker compose -p helpdesk-verify --env-file <archivo fuera del repo> up --build -d` con `POSTGRES_PORT`, `API_PORT` y `WEB_PORT` propios; limpiar con `docker compose -p helpdesk-verify down -v`
 - Herramientas locales: `dotnet tool restore` (instala `dotnet-ef` desde `dotnet-tools.json`)
 - Cadena de conexión local: user-secrets de Api, clave `ConnectionStrings:DefaultConnection`; fuera de local, variable `ConnectionStrings__DefaultConnection`

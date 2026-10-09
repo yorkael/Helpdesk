@@ -108,11 +108,11 @@ docker compose up --build
 | Service | URL | Notes |
 |---|---|---|
 | `web` | http://127.0.0.1:8081 | The frontend. It proxies `/api/` to the API, so the browser talks to a single origin |
-| `api` | http://127.0.0.1:8080 | The API, running in `Production`: it does not expose the OpenAPI document |
+| `api` | http://127.0.0.1:8080 | The API, running in `Production`: it does not expose the OpenAPI document. Its container healthcheck calls [`/health`](#operations) |
 | `db` | `127.0.0.1:5432` | PostgreSQL 18, with data in the `pgdata` volume |
 | `migrate` | none | Applies the migrations and exits |
 
-The ports come from `WEB_PORT`, `API_PORT` and `POSTGRES_PORT`. Compose starts the services in order: `migrate` waits until the database is healthy, the API waits until `migrate` finishes successfully, and the frontend starts after the API.
+The ports come from `WEB_PORT`, `API_PORT` and `POSTGRES_PORT`. Compose starts the services in order: `migrate` waits until the database is healthy, the API waits until `migrate` finishes successfully, and the frontend starts once the API is healthy.
 
 **Migrations.** The `migrate` service runs an EF Core migrations bundle that applies the migrations committed in the repository and exits. The API still never migrates the database on startup. The bundle is idempotent: on every later `docker compose up` it applies only the pending migrations, usually none.
 
@@ -130,7 +130,7 @@ Known limitations:
 
 - Secrets reach the containers as environment variables, so they are visible with `docker inspect`.
 - A `;` in `POSTGRES_PASSWORD` breaks the connection string that compose builds from it.
-- The API has no healthcheck until it exposes a health endpoint ([#34](https://github.com/yorkael/Helpdesk/issues/34)); the frontend only waits for the API container to start.
+- The health check has its own limitations; see [Operations](#operations).
 - A missing `Jwt__SigningKey` is detected by the application, not by compose: `migrate` fails with `'Jwt:SigningKey' is not configured` and the API does not start.
 - `migrate` receives the JWT signing key only to pass the startup validation it shares with the API; it does not use it.
 - HTTPS redirection has no effect in the container, which serves plain HTTP; TLS arrives with the deployment (HU-14).
@@ -287,11 +287,35 @@ Known limitations:
 - There is no rate limiting or lockout on the authentication endpoints yet ([#20](https://github.com/yorkael/Helpdesk/issues/20)).
 - There is no endpoint to create agents or admins yet ([#19](https://github.com/yorkael/Helpdesk/issues/19)); see [Staff users](#staff-users).
 
+### Operations
+
+| Method | Route | Access | Result |
+|---|---|---|---|
+| `GET` | `/health` | anonymous | `200` with `Healthy` when PostgreSQL accepts a connection, `503` with `Unhealthy` otherwise, as plain text |
+
+- The check only opens a connection to PostgreSQL, with a 3-second limit that covers the TCP connection, the startup handshake and authentication. It does not check the schema or pending migrations.
+- The body is only the overall status. The reason for a failure goes to the API log, never to the caller.
+- In the Docker stack, the `api` container uses it as its healthcheck: every 10 seconds, unhealthy after 3 failed probes, with a 30-second start period. The `web` service starts only once `api` is healthy.
+
+```bash
+curl -i http://127.0.0.1:8080/health   # full Docker stack
+curl -i http://localhost:5038/health   # dotnet run
+```
+
+Known limitations, measured with Docker Desktop:
+
+- While the database is down, every check logs an error with its stack trace: about 14 lines when the database does not answer and about 19 when its container is stopped. At one probe every 10 seconds that is roughly 121,000 to 166,000 lines a day. While the database is healthy, the checks log nothing.
+- When the `db` container is stopped, its name no longer resolves, and the failed DNS lookup, which the 3-second limit does not cover, makes `/health` take about 8 seconds. The container probe gives up after 4 seconds and the API is marked unhealthy after about 33 seconds.
+- `/health` is only served on the API port. On the frontend port (http://127.0.0.1:8081/health) nginx answers `200` with `index.html`, its single-page app fallback, because it proxies only `/api/`.
+- If the API is unhealthy when compose has to start `web` (for example, because it cannot reach the database), `docker compose up` stops with `dependency failed to start: container ... is unhealthy` and `web` is created but not started, although nginx could serve the static files on its own.
+- Docker only reports the API as unhealthy; it does not restart it (`restart: unless-stopped` acts only when the process exits). The API recovers on its own when the database returns.
+- The endpoint is anonymous and has no rate limiting ([#20](https://github.com/yorkael/Helpdesk/issues/20)).
+
 ## Roadmap
 
 - Specification, architecture and backlog: [docs/Helpdesk_Especificacion_y_Plan.pdf](docs/Helpdesk_Especificacion_y_Plan.pdf) (in Spanish)
 - Progress by sprint: [GitHub Project](https://github.com/users/yorkael/projects/1)
-- Sprint 3: containerized stack with Docker Compose (done, [#11](https://github.com/yorkael/Helpdesk/issues/11)); CI with GitHub Actions ([#12](https://github.com/yorkael/Helpdesk/issues/12)), the React UI ([#13](https://github.com/yorkael/Helpdesk/issues/13)) and deployment ([#14](https://github.com/yorkael/Helpdesk/issues/14)) are pending.
+- Sprint 3: containerized stack with Docker Compose (done, [#11](https://github.com/yorkael/Helpdesk/issues/11)) and its health check (done, [#34](https://github.com/yorkael/Helpdesk/issues/34)); CI with GitHub Actions ([#12](https://github.com/yorkael/Helpdesk/issues/12)), the React UI ([#13](https://github.com/yorkael/Helpdesk/issues/13)) and deployment ([#14](https://github.com/yorkael/Helpdesk/issues/14)) are pending.
 
 ## License
 
