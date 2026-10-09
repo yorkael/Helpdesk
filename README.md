@@ -2,7 +2,7 @@
 
 A support ticket system built as a public portfolio project: a layered ASP.NET Core backend and a React frontend.
 
-**Status:** Under construction (Sprint 1).
+**Status:** Sprint 2 complete: the backend API covers authentication, tickets, assignment, status changes, comments and audit history. Next is Sprint 3: Docker, CI, the frontend UI and deployment.
 
 ## Tech stack
 
@@ -124,6 +124,18 @@ dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --
 
 Migrations are applied explicitly; the API does not migrate the database on startup.
 
+The migrations seed four categories: `General`, `Technical issue`, `Billing` and `Account`. Categories are listed in name order with PostgreSQL's ICU collation `und-x-icu`, so the server must be built with ICU support; the official `postgres:18` image, used by `docker-compose.yml` and by the tests, is.
+
+### Staff users
+
+Public sign-up only creates clients, and there is no endpoint yet to create agents or admins ([#19](https://github.com/yorkael/Helpdesk/issues/19)). To try assignment, status changes or the audit history locally, register a user through the API and change its role in the database, with the `POSTGRES_USER` and `POSTGRES_DB` values from `.env`:
+
+```bash
+docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "UPDATE users SET role = 'Agent' WHERE email = '<email>';"
+```
+
+Use `Admin` instead of `Agent` for an admin. Log in again after the change: the role travels in the access token, so tokens issued before it keep the old role.
+
 ### Backend
 
 From the repository root:
@@ -156,15 +168,45 @@ pnpm dev
 
 The app runs on http://localhost:5173.
 
-## Authentication
+## API
 
-| Endpoint | Access | Result |
-|---|---|---|
-| `POST /api/auth/register` | anonymous | `201` with the new user; public sign-up always creates a `Client` |
-| `POST /api/auth/login` | anonymous | `200` with an access token and a refresh token |
-| `POST /api/auth/refresh` | anonymous | `200` with a new token pair; the refresh token used is revoked |
-| `POST /api/auth/logout` | anonymous | `204`, also for unknown or already revoked tokens |
-| `GET /api/auth/me` | authenticated | `200` with the caller as described by the access token |
+| Method | Route | Access | Result |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | anonymous | `201` with the new user; public sign-up always creates a `Client` |
+| `POST` | `/api/auth/login` | anonymous | `200` with an access token and a refresh token |
+| `POST` | `/api/auth/refresh` | anonymous | `200` with a new token pair; the refresh token used is revoked |
+| `POST` | `/api/auth/logout` | anonymous | `204`, also for unknown or already revoked tokens |
+| `GET` | `/api/auth/me` | authenticated | `200` with the caller as described by the access token |
+| `POST` | `/api/tickets` | `ClientOnly` | `201` with the new ticket, created as `Open` |
+| `GET` | `/api/tickets` | authenticated | `200` with a page of the tickets the caller may see |
+| `PUT` | `/api/tickets/{id}/assignee` | `StaffOnly` | `200` with the ticket assigned to an active agent |
+| `PUT` | `/api/tickets/{id}/status` | `StaffOnly` | `200` with the ticket in its new status |
+| `POST` | `/api/tickets/{id}/comments` | authenticated | `201` with the new comment |
+| `GET` | `/api/tickets/{id}/comments` | authenticated | `200` with the ticket's comments, oldest first |
+| `GET` | `/api/tickets/{id}/history` | `AdminOnly` | `200` with the ticket's audit history, oldest first |
+| `GET` | `/api/categories` | authenticated | `200` with every category, ordered by name |
+
+### Tickets
+
+- **Visibility** depends on the caller's role, read from the access token: admins see every ticket, agents see tickets assigned to them or unassigned, and clients see the tickets they created. A ticket outside the caller's scope answers `404`, like one that does not exist.
+- **Listing** accepts `page`, `pageSize` (default 20, maximum 100), `status`, `priority`, `assignedToId`, `categoryId` and `search`, a case-insensitive match on the title or description. Results are newest first, and the response includes `totalCount`.
+- **Priorities** are `Low`, `Medium`, `High` and `Urgent`. The creator comes from the access token; a client cannot set the assignee or the status.
+- **Assignment:** an agent can only assign a ticket to themselves; an admin can assign or reassign any ticket. A closed ticket cannot be assigned.
+- **Status changes** follow this table; any other move answers `409`, and sending the current status changes nothing. `InProgress`, `WaitingOnCustomer` and `Resolved` require an assignee.
+
+  | From | Allowed targets |
+  |---|---|
+  | `Open` | `InProgress`, `Closed` |
+  | `InProgress` | `WaitingOnCustomer`, `Resolved` |
+  | `WaitingOnCustomer` | `InProgress`, `Resolved` |
+  | `Resolved` | `InProgress`, `Closed` |
+  | `Closed` | none |
+
+- **Comments** can be public or internal. Only admins and agents can write or read internal comments; clients get public ones only. A closed ticket receives no comments.
+- **Audit history** records the ticket's creation, assignment and status changes with the user and time of each change. Comments are not audited.
+- **Concurrent changes** to the same ticket are detected with optimistic concurrency; the losing request answers `409`.
+
+### Authentication
 
 - **Passwords** are hashed with PBKDF2-HMAC-SHA512, 210,000 iterations and a random salt (ASP.NET Core Identity's `PasswordHasher`). Older hashes are upgraded on the next successful login.
 - **Access tokens** are JWTs signed with HS256 that expire after 15 minutes. They carry `sub`, `email`, `name`, `role` and `jti`.
@@ -176,6 +218,7 @@ Known limitations:
 
 - An access token that was already issued stays valid until it expires, for up to 15 minutes, even after the user is deactivated or their role changes. Access tokens are not checked against the database on each request; the short lifetime bounds this window, and refreshing is rejected immediately for inactive users.
 - There is no rate limiting or lockout on the authentication endpoints yet ([#20](https://github.com/yorkael/Helpdesk/issues/20)).
+- There is no endpoint to create agents or admins yet ([#19](https://github.com/yorkael/Helpdesk/issues/19)); see [Staff users](#staff-users).
 
 ## Roadmap
 
