@@ -8,8 +8,8 @@ Sistema de tickets de soporte. Proyecto público de portafolio de Yorkael, const
   Planned: Serilog (requisito no funcional del PDF, sin HU asignada).
 - Frontend: React, TypeScript, Vite, Tailwind CSS, oxlint
   Planned: Zustand (HU-13, Sprint 3).
-- DevOps: docker-compose, hoy solo con PostgreSQL local
-  Planned: Dockerfiles y compose con API y frontend (HU-11), GitHub Actions (HU-12), ambos del Sprint 3.
+- DevOps: Dockerfiles multi-stage (`backend/Dockerfile` con targets `runtime` y `migrator`, `frontend/Dockerfile` con nginx sin root) y docker-compose con PostgreSQL, migrate (EF migrations bundle), API y frontend (HU-11)
+  Planned: GitHub Actions (HU-12, Sprint 3).
 - Despliegue (planned, HU-14): backend en Railway, frontend en Vercel
 
 ## Arquitectura (backend)
@@ -54,7 +54,9 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Pruebas: `dotnet test backend/Helpdesk.sln` (requiere Docker en marcha: las pruebas de persistencia y de API usan Testcontainers con `postgres:18`; la fábrica de pruebas de API inyecta su propia configuración y clave aleatoria, no usa user-secrets)
 - Pruebas unitarias (Application y Domain, sin Docker): `dotnet test backend/Helpdesk.sln --filter "FullyQualifiedName~Helpdesk.Tests.Application|FullyQualifiedName~Helpdesk.Tests.Domain"` (`ApplicationTestIsolationTests` falla si una prueba de esos namespaces usa un fixture de base de datos)
 - Ejecutar la API: `dotnet run --project backend/src/Helpdesk.Api` (http://localhost:5038; en Development, OpenAPI en http://localhost:5038/openapi/v1.json)
-- Base de datos local: `docker compose up -d` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`). PostgreSQL debe tener ICU: el listado de categorías ordena con la collation `und-x-icu` (la imagen oficial `postgres:18` la trae)
+- Base de datos local (solo la base, sin clave JWT): `docker compose up -d db` (PostgreSQL 18 en `127.0.0.1:${POSTGRES_PORT}`, variables en `.env`). PostgreSQL debe tener ICU: el listado de categorías ordena con la collation `und-x-icu` (la imagen oficial de PostgreSQL 18 la trae)
+- Stack completo: `docker compose up --build` (requiere `Jwt__SigningKey` en `.env`; web en http://127.0.0.1:8081 con proxy de `/api/`, API en http://127.0.0.1:8080 en Production, sin OpenAPI). Detener con `docker compose down`; nunca `down -v` en el proyecto por defecto: borra `pgdata`, la base local
+- Pruebas del compose: siempre con un proyecto y un env-file aparte para no tocar la base local, p. ej. `docker compose -p helpdesk-verify --env-file <archivo fuera del repo> up --build -d` con `POSTGRES_PORT`, `API_PORT` y `WEB_PORT` propios; limpiar con `docker compose -p helpdesk-verify down -v`
 - Herramientas locales: `dotnet tool restore` (instala `dotnet-ef` desde `dotnet-tools.json`)
 - Cadena de conexión local: user-secrets de Api, clave `ConnectionStrings:DefaultConnection`; fuera de local, variable `ConnectionStrings__DefaultConnection`
 - Clave de firma JWT local (mínimo 32 bytes aleatorios en base64; sin ella la API y `dotnet ef` no arrancan): user-secrets de Api, clave `Jwt:SigningKey`; fuera de local, variable `Jwt__SigningKey`. Generarla en PowerShell 5.1 o 7: `$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); dotnet user-secrets set "Jwt:SigningKey" ([Convert]::ToBase64String($bytes)) --project backend/src/Helpdesk.Api`; alternativa: `openssl rand -base64 48`
