@@ -2,7 +2,7 @@
 
 A support ticket system built as a public portfolio project: a layered ASP.NET Core backend and a React frontend.
 
-**Status:** Under construction (Sprint 1).
+**Status:** Sprint 2 complete: the backend API covers authentication, tickets, assignment, status changes, comments and audit history. Next is Sprint 3: Docker, CI, the frontend UI and deployment.
 
 ## Tech stack
 
