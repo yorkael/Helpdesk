@@ -1,0 +1,15 @@
+# Everything is excluded except what the frontend build needs, so new files (and secrets)
+# never reach the build context by default.
+*
+!package.json
+!pnpm-lock.yaml
+!index.html
+!vite.config.ts
+!tsconfig*.json
+!nginx.conf
+!public/
+!src/
+
+**/.env
+**/.env.*
+**/*.local
