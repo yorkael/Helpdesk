@@ -37,5 +37,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+// Anonymous so container and platform probes can call it without a token. The body is only the overall status.
+app.MapHealthChecks("/health").AllowAnonymous();
 
 app.Run();
