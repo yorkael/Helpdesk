@@ -1,0 +1,15 @@
+# The build context is the repository root. Everything is excluded except what the
+# backend build needs, so new files (and secrets) never reach the context by default.
+*
+!global.json
+!backend/Directory.Build.props
+!backend/src/
+
+**/bin/
+**/obj/
+**/node_modules/
+**/.env
+**/.env.*
+**/appsettings.*.local.json
+**/secrets.json
+**/*.user
