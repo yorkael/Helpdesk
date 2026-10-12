@@ -9,7 +9,7 @@ Sistema de tickets de soporte. Proyecto público de portafolio de Yorkael, const
 - Frontend: React, TypeScript, Vite, Tailwind CSS, oxlint
   Planned: Zustand (HU-13, Sprint 3).
 - DevOps: Dockerfiles multi-stage (`backend/Dockerfile` con targets `runtime` y `migrator`, `frontend/Dockerfile` con nginx sin root) y docker-compose con PostgreSQL, migrate (EF migrations bundle), API y frontend (HU-11). Healthcheck de la api sobre `GET /health` (#34): bash con `/dev/tcp` porque la imagen no trae curl ni wget, envuelto en `timeout 4` porque el timeout de Docker deja procesos `head` colgados si la API no responde; `web` espera a que la api esté healthy
-  Planned: GitHub Actions (HU-12, Sprint 3).
+  CI con GitHub Actions (HU-12): `.github/workflows/ci.yml`, en PR y push a `main`, jobs `backend` (restore, build Release, test con Testcontainers) y `frontend` (install, lint, build) en `ubuntu-24.04`. `backend` y `frontend` son checks obligatorios del ruleset "Protect main": no renombrar los jobs sin cambiar el ruleset a la vez (si no, todos los PR quedan esperando un check que nunca llega). Sin filtros de paths (un check obligatorio que no corre bloquea el merge), `permissions: contents: read`, sin secretos, nunca `pull_request_target`. Acciones fijadas por SHA de commit (no el del tag anotado) con `# vX.Y.Z`, versiones con al menos dos semanas. Versiones leídas del repo: SDK de `global.json`, Node de `frontend/.nvmrc` (duplicada en `frontend/Dockerfile`: actualizar juntas), pnpm del `packageManager`. Caché solo de pnpm (la de NuGet exige `packages.lock.json`, que no hay)
 - Despliegue (planned, HU-14): backend en Railway, frontend en Vercel
 
 ## Arquitectura (backend)
@@ -63,3 +63,5 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Aplicar migraciones: `dotnet ef database update --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api`
 - Nueva migración: `dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations`
 - Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`; lint con `pnpm lint` (oxlint)
+- Validar el workflow antes de subirlo: `docker run --rm -v "$(pwd):/repo" -w /repo rhysd/actionlint:1.7.12` desde la raíz (en Git Bash de Windows: `MSYS_NO_PATHCONV=1` y `$(pwd -W)`)
+- Reproducir CI en local: backend `dotnet restore backend/Helpdesk.sln`, `dotnet build backend/Helpdesk.sln --no-restore --configuration Release`, `dotnet test backend/Helpdesk.sln --no-build --configuration Release`; frontend `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm build`

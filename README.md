@@ -1,8 +1,10 @@
 # Helpdesk
 
+[![CI](https://github.com/yorkael/Helpdesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yorkael/Helpdesk/actions/workflows/ci.yml)
+
 A support ticket system built as a public portfolio project: a layered ASP.NET Core backend and a React frontend.
 
-**Status:** Sprint 3 in progress. The backend API covers authentication, tickets, assignment, status changes, comments and audit history, and the whole stack (PostgreSQL, migrations, API and frontend) runs with Docker Compose. Still to come in Sprint 3: CI, the frontend UI and deployment.
+**Status:** Sprint 3 in progress. The backend API covers authentication, tickets, assignment, status changes, comments and audit history, and the whole stack (PostgreSQL, migrations, API and frontend) runs with Docker Compose. Every pull request is built and tested by GitHub Actions. Still to come in Sprint 3: the frontend UI and deployment.
 
 ## Tech stack
 
@@ -15,6 +17,7 @@ A support ticket system built as a public portfolio project: a layered ASP.NET C
 | Frontend | React, TypeScript, Vite, Tailwind CSS |
 | Tooling | pnpm, oxlint |
 | Containers | Docker multi-stage images, Docker Compose, nginx |
+| CI | GitHub Actions |
 
 ## Architecture
 
@@ -49,9 +52,10 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 ├── frontend/                   # Vite + React + TypeScript + Tailwind CSS
 │   ├── Dockerfile              # builds the app and serves it with unprivileged nginx
 │   ├── .dockerignore           # build context allow-list
+│   ├── .nvmrc                  # Node.js version used by CI
 │   └── nginx.conf              # static files, SPA fallback and /api/ proxy to the API
 ├── docs/                       # project specification and plan
-├── .github/workflows/          # CI workflows (empty for now)
+├── .github/workflows/ci.yml    # CI: backend and frontend checks
 ├── .env.example
 ├── docker-compose.yml          # PostgreSQL, migrations, API and frontend
 ├── dotnet-tools.json           # local .NET tools (dotnet-ef)
@@ -235,6 +239,40 @@ pnpm dev
 
 The app runs on http://localhost:5173.
 
+## Continuous integration
+
+The [CI workflow](.github/workflows/ci.yml) runs on every pull request to `main` and every push to `main`, and can also be started by hand from the Actions tab. It has two jobs, which run in parallel on `ubuntu-24.04`:
+
+| Job | Steps |
+|---|---|
+| `backend` | `dotnet restore`, `dotnet build` in Release, `dotnet test` (including the Testcontainers tests, on the runner's Docker) |
+| `frontend` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm build` |
+
+`backend` and `frontend` are required status checks in the ruleset that protects `main`, so a pull request cannot be merged until both pass. **Do not rename these jobs:** the ruleset matches checks by name, and after a rename every pull request waits for a check that never reports. A rename has to change the ruleset at the same time.
+
+- **Versions** come from the repository, not from the workflow: the .NET SDK from `global.json`, Node.js from `frontend/.nvmrc` and pnpm from the `packageManager` field in `frontend/package.json`. `frontend/.nvmrc` and `frontend/Dockerfile` both name the Node.js version, so update them together.
+- **No secrets:** the workflow only has read access to the repository, and the API tests generate their own signing key. Third-party actions are pinned to a commit SHA.
+- **Test results:** when the `backend` job fails, its TRX test results are uploaded as the `test-results` artifact of the run and kept for 7 days.
+
+To reproduce the jobs locally, from the repository root (Docker must be running for the backend tests):
+
+```bash
+dotnet restore backend/Helpdesk.sln
+dotnet build backend/Helpdesk.sln --no-restore --configuration Release
+dotnet test backend/Helpdesk.sln --no-build --configuration Release
+
+cd frontend
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm build
+```
+
+To check the workflow file before pushing, run [actionlint](https://github.com/rhysd/actionlint) from the repository root:
+
+```bash
+docker run --rm -v "$(pwd):/repo" -w /repo rhysd/actionlint:1.7.12
+```
+
 ## API
 
 | Method | Route | Access | Result |
@@ -315,7 +353,7 @@ Known limitations, measured with Docker Desktop:
 
 - Specification, architecture and backlog: [docs/Helpdesk_Especificacion_y_Plan.pdf](docs/Helpdesk_Especificacion_y_Plan.pdf) (in Spanish)
 - Progress by sprint: [GitHub Project](https://github.com/users/yorkael/projects/1)
-- Sprint 3: containerized stack with Docker Compose (done, [#11](https://github.com/yorkael/Helpdesk/issues/11)) and its health check (done, [#34](https://github.com/yorkael/Helpdesk/issues/34)); CI with GitHub Actions ([#12](https://github.com/yorkael/Helpdesk/issues/12)), the React UI ([#13](https://github.com/yorkael/Helpdesk/issues/13)) and deployment ([#14](https://github.com/yorkael/Helpdesk/issues/14)) are pending.
+- Sprint 3: containerized stack with Docker Compose (done, [#11](https://github.com/yorkael/Helpdesk/issues/11)) and its health check (done, [#34](https://github.com/yorkael/Helpdesk/issues/34)), and CI with GitHub Actions (done, [#12](https://github.com/yorkael/Helpdesk/issues/12)); the React UI ([#13](https://github.com/yorkael/Helpdesk/issues/13)) and deployment ([#14](https://github.com/yorkael/Helpdesk/issues/14)) are pending.
 
 ## License
 
