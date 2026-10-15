@@ -1,4 +1,3 @@
-using System.Data.Common;
 using Helpdesk.Application.Abstractions;
 using Helpdesk.Application.Tickets;
 using Helpdesk.Domain.Entities;
@@ -6,7 +5,6 @@ using Helpdesk.Domain.Enums;
 using Helpdesk.Infrastructure;
 using Helpdesk.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Helpdesk.Tests.Persistence;
@@ -330,30 +328,5 @@ public class TicketListQueryTests(PostgreSqlFixture fixture) : IAsyncLifetime
 
         await context.SaveChangesAsync();
         return ticket;
-    }
-
-    private sealed class CommandRecorder : DbCommandInterceptor
-    {
-        public List<string> CommandTexts { get; } = [];
-
-        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
-            DbCommand command,
-            CommandEventData eventData,
-            InterceptionResult<DbDataReader> result,
-            CancellationToken cancellationToken = default)
-        {
-            CommandTexts.Add(command.CommandText);
-            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
-        }
-
-        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
-            DbCommand command,
-            CommandEventData eventData,
-            InterceptionResult<object> result,
-            CancellationToken cancellationToken = default)
-        {
-            CommandTexts.Add(command.CommandText);
-            return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
-        }
     }
 }
