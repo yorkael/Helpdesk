@@ -207,6 +207,60 @@ public class TicketServiceTests
     }
 
     [Fact]
+    public async Task Get_returns_the_repository_detail_for_the_requested_ticket_unchanged()
+    {
+        var ticketId = Guid.NewGuid();
+        _tickets.DetailResult = Detail(ticketId);
+
+        var response = await _ticketService.GetAsync(ticketId, CreatorId, UserRole.Client, CancellationToken.None);
+
+        Assert.Same(_tickets.DetailResult, response);
+        Assert.Equal(ticketId, _tickets.LastDetailLookup?.Id);
+    }
+
+    [Theory]
+    [InlineData(UserRole.Client, TicketVisibility.CreatedByUser)]
+    [InlineData(UserRole.Agent, TicketVisibility.AssignedToUserOrUnassigned)]
+    [InlineData(UserRole.Admin, TicketVisibility.All)]
+    public async Task Get_reads_the_ticket_within_the_callers_scope(UserRole role, TicketVisibility expected)
+    {
+        var ticketId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _tickets.DetailResult = Detail(ticketId);
+
+        await _ticketService.GetAsync(ticketId, userId, role, CancellationToken.None);
+
+        Assert.Equal((ticketId, expected, userId), _tickets.LastDetailLookup);
+    }
+
+    [Fact]
+    public async Task Get_rejects_an_unknown_role_instead_of_showing_any_ticket()
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _ticketService.GetAsync(Guid.NewGuid(), CreatorId, (UserRole)99, CancellationToken.None));
+
+        Assert.Null(_tickets.LastDetailLookup);
+    }
+
+    [Fact]
+    public async Task Getting_a_ticket_that_cannot_be_loaded_is_not_found()
+    {
+        await Assert.ThrowsAsync<TicketNotFoundException>(() =>
+            _ticketService.GetAsync(Guid.NewGuid(), CreatorId, UserRole.Client, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Get_neither_audits_nor_saves()
+    {
+        var ticketId = Guid.NewGuid();
+        _tickets.DetailResult = Detail(ticketId);
+
+        await _ticketService.GetAsync(ticketId, AdminId, UserRole.Admin, CancellationToken.None);
+
+        AssertNothingSaved();
+    }
+
+    [Fact]
     public async Task Agent_takes_an_unassigned_ticket_and_the_change_is_audited_in_one_save()
     {
         var agent = SeedAgent();
@@ -512,4 +566,7 @@ public class TicketServiceTests
         new("Printer offline", "It shows error 42.", CategoryId, "High");
 
     private static ListTicketsRequest EmptyListRequest() => new(null, null, null, null, null, null, null);
+
+    private TicketDetailResponse Detail(Guid ticketId) => new(ticketId, "Printer offline", "It shows error 42.", "Open",
+        "High", CategoryId, "General", CreatorId, "Ana Ruiz", null, null, _time.Now);
 }

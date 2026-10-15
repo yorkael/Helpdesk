@@ -23,6 +23,24 @@ public sealed record TicketResponse(
     DateTimeOffset CreatedAt);
 
 /// <summary>
+/// One ticket as its detail page shows it: the list item's fields plus the description. A separate type, so
+/// TicketResponse stays as it is for the writes and the list never reads descriptions.
+/// </summary>
+public sealed record TicketDetailResponse(
+    Guid Id,
+    string Title,
+    string Description,
+    string Status,
+    string Priority,
+    Guid CategoryId,
+    string CategoryName,
+    Guid CreatedById,
+    string CreatedByName,
+    Guid? AssignedToId,
+    string? AssignedToName,
+    DateTimeOffset CreatedAt);
+
+/// <summary>
 /// Built from the query string. Has no creator filter on purpose: which tickets a user may see
 /// comes from their token, and unknown query parameters are ignored.
 /// </summary>

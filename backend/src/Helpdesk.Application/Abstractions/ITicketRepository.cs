@@ -9,6 +9,13 @@ public interface ITicketRepository
 
     Task<PagedResponse<TicketListItem>> ListAsync(TicketListQuery query, CancellationToken cancellationToken);
 
+    /// <returns>The ticket's detail, or null when it does not exist or is outside what the user may see.</returns>
+    Task<TicketDetailResponse?> GetDetailAsync(
+        Guid id,
+        TicketVisibility visibility,
+        Guid userId,
+        CancellationToken cancellationToken);
+
     /// <returns>The ticket, or null when it does not exist or is outside what the user may see.</returns>
     Task<Ticket?> GetVisibleAsync(
         Guid id,
