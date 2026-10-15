@@ -51,6 +51,24 @@ public sealed class TicketsController(TicketService ticketService) : ControllerB
     }
 
     /// <summary>
+    /// One ticket with its description and the category, creator and assignee names. The caller's role, read from
+    /// the access token, decides which tickets they may read.
+    /// </summary>
+    /// <remarks>
+    /// A ticket the caller may not see answers 404, like one that does not exist, so its existence is not revealed.
+    /// </remarks>
+    [Authorize]
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType<TicketDetailResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    {
+        var ticket = await ticketService.GetAsync(id, User.GetUserId(), User.GetUserRole(), cancellationToken);
+        return Ok(ticket);
+    }
+
+    /// <summary>
     /// An agent takes an unassigned ticket for themselves; an admin assigns or reassigns any ticket to an active
     /// agent. The user making the change comes from the access token. Sending the current assignee changes nothing.
     /// </summary>
