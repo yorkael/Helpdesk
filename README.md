@@ -284,6 +284,7 @@ docker run --rm -v "$(pwd):/repo" -w /repo rhysd/actionlint:1.7.12
 | `GET` | `/api/auth/me` | authenticated | `200` with the caller as described by the access token |
 | `POST` | `/api/tickets` | `ClientOnly` | `201` with the new ticket, created as `Open` |
 | `GET` | `/api/tickets` | authenticated | `200` with a page of the tickets the caller may see |
+| `GET` | `/api/tickets/{id}` | authenticated | `200` with the ticket, its description and the category, creator and assignee names; `404` if the caller may not see it |
 | `PUT` | `/api/tickets/{id}/assignee` | `StaffOnly` | `200` with the ticket assigned to an active agent |
 | `PUT` | `/api/tickets/{id}/status` | `StaffOnly` | `200` with the ticket in its new status |
 | `POST` | `/api/tickets/{id}/comments` | authenticated | `201` with the new comment |
