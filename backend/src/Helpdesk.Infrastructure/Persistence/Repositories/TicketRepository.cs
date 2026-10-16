@@ -45,6 +45,31 @@ internal sealed class TicketRepository(HelpdeskDbContext context) : ITicketRepos
     }
 
     /// <summary>
+    /// One query, projected straight to the detail with the names joined in SQL, so nothing is tracked.
+    /// </summary>
+    public Task<TicketDetailResponse?> GetDetailAsync(
+        Guid id,
+        TicketVisibility visibility,
+        Guid userId,
+        CancellationToken cancellationToken) =>
+        VisibleTo(visibility, userId)
+            .Where(ticket => ticket.Id == id)
+            .Select(ticket => new TicketDetailResponse(
+                ticket.Id,
+                ticket.Title,
+                ticket.Description,
+                ticket.Status.ToString(),
+                ticket.Priority.ToString(),
+                ticket.CategoryId,
+                ticket.Category.Name,
+                ticket.CreatedById,
+                ticket.CreatedBy.Name,
+                ticket.AssignedToId,
+                ticket.AssignedTo != null ? ticket.AssignedTo.Name : null,
+                ticket.CreatedAt))
+            .SingleOrDefaultAsync(cancellationToken);
+
+    /// <summary>
     /// Tracked, so the caller's changes are saved and checked against the row version it read.
     /// Not a SELECT ... FOR UPDATE: nothing is locked; a concurrent change is detected when saving.
     /// </summary>
@@ -55,7 +80,7 @@ internal sealed class TicketRepository(HelpdeskDbContext context) : ITicketRepos
         CancellationToken cancellationToken) =>
         VisibleTo(visibility, userId).SingleOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
 
-    // The one place that decides which tickets a user may see; listing and loading one ticket both use it.
+    // The one place that decides which tickets a user may see; listing, reading and loading one ticket all use it.
     private IQueryable<Ticket> VisibleTo(TicketVisibility visibility, Guid userId) => visibility switch
     {
         TicketVisibility.All => context.Tickets,

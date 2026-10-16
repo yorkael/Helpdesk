@@ -64,6 +64,18 @@ public sealed class TicketService(
         return await tickets.ListAsync(query, cancellationToken);
     }
 
+    /// <summary>Read only: nothing is saved, and reads are not audited.</summary>
+    /// <param name="userId">The authenticated user; decides, with the role, which tickets they may read.</param>
+    /// <param name="role">The authenticated user's role; decides which tickets they may read.</param>
+    /// <exception cref="TicketNotFoundException">The ticket does not exist or is outside the user's scope.</exception>
+    public async Task<TicketDetailResponse> GetAsync(
+        Guid ticketId,
+        Guid userId,
+        UserRole role,
+        CancellationToken cancellationToken) =>
+        await tickets.GetDetailAsync(ticketId, TicketVisibilities.For(role), userId, cancellationToken)
+        ?? throw new TicketNotFoundException();
+
     /// <summary>An agent takes a ticket they can see for themselves; an admin assigns or reassigns any ticket.</summary>
     /// <param name="actorId">The authenticated user; recorded in the audit history, never taken from the body.</param>
     /// <param name="role">The authenticated user's role; decides which tickets they may load and change.</param>

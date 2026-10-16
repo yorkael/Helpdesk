@@ -22,6 +22,21 @@ internal sealed class InMemoryTicketRepository : ITicketRepository
         return Task.FromResult(ListResult);
     }
 
+    /// <summary>The ticket and scope the service asked for; applying the scope is the real repository's job.</summary>
+    public (Guid Id, TicketVisibility Visibility, Guid UserId)? LastDetailLookup { get; private set; }
+
+    public TicketDetailResponse? DetailResult { get; set; }
+
+    public Task<TicketDetailResponse?> GetDetailAsync(
+        Guid id,
+        TicketVisibility visibility,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        LastDetailLookup = (id, visibility, userId);
+        return Task.FromResult(DetailResult);
+    }
+
     /// <summary>The scope the service asked for; applying it is the real repository's job.</summary>
     public (TicketVisibility Visibility, Guid UserId)? LastVisibleLookup { get; private set; }
 
