@@ -195,7 +195,7 @@ dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --
 
 Migrations are applied explicitly; the API does not migrate the database on startup. In the full Docker stack the `migrate` service applies them (see [Run the full stack with Docker](#run-the-full-stack-with-docker)).
 
-The migrations seed four categories: `General`, `Technical issue`, `Billing` and `Account`. Categories are listed in name order with PostgreSQL's ICU collation `und-x-icu`, so the server must be built with ICU support; the official PostgreSQL 18 image is, both as `postgres:18.6-trixie` in `docker-compose.yml` and as `postgres:18` in the tests.
+The migrations seed four categories: `General`, `Technical issue`, `Billing` and `Account`. Categories are listed in name order with PostgreSQL's ICU collation `und-x-icu`, so the server must be built with ICU support; the official PostgreSQL 18 image is, both as `postgres:18.6-trixie` in `docker-compose.yml` and as `postgres:18` in the tests. The list of agents is ordered by name with the same collation.
 
 ### Staff users
 
@@ -291,13 +291,14 @@ docker run --rm -v "$(pwd):/repo" -w /repo rhysd/actionlint:1.7.12
 | `GET` | `/api/tickets/{id}/comments` | authenticated | `200` with the ticket's comments, oldest first |
 | `GET` | `/api/tickets/{id}/history` | `AdminOnly` | `200` with the ticket's audit history, oldest first |
 | `GET` | `/api/categories` | authenticated | `200` with every category, ordered by name |
+| `GET` | `/api/agents` | `AdminOnly` | `200` with the active agents (id and name), ordered by name |
 
 ### Tickets
 
 - **Visibility** depends on the caller's role, read from the access token: admins see every ticket, agents see tickets assigned to them or unassigned, and clients see the tickets they created. A ticket outside the caller's scope answers `404`, like one that does not exist.
 - **Listing** accepts `page`, `pageSize` (default 20, maximum 100), `status`, `priority`, `assignedToId`, `categoryId` and `search`, a case-insensitive match on the title or description. Results are newest first, and the response includes `totalCount`.
 - **Priorities** are `Low`, `Medium`, `High` and `Urgent`. The creator comes from the access token; a client cannot set the assignee or the status.
-- **Assignment:** an agent can only assign a ticket to themselves; an admin can assign or reassign any ticket. A closed ticket cannot be assigned.
+- **Assignment:** an agent can only assign a ticket to themselves; an admin can assign or reassign any ticket. A closed ticket cannot be assigned. An admin can list the candidate agents with `GET /api/agents`.
 - **Status changes** follow this table; any other move answers `409`, and sending the current status changes nothing. `InProgress`, `WaitingOnCustomer` and `Resolved` require an assignee.
 
   | From | Allowed targets |
