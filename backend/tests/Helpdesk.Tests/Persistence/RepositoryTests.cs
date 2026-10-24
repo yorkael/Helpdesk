@@ -1,9 +1,11 @@
 using Helpdesk.Application.Abstractions;
+using Helpdesk.Application.Agents;
 using Helpdesk.Application.Authentication;
 using Helpdesk.Application.Common;
 using Helpdesk.Application.Tickets;
 using Helpdesk.Domain.Entities;
 using Helpdesk.Domain.Enums;
+using Helpdesk.Tests.Application;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -54,6 +56,85 @@ public class RepositoryTests(PostgreSqlFixture fixture)
             .GetNamesAsync([], CancellationToken.None);
 
         Assert.Empty(names);
+    }
+
+    [Fact]
+    public async Task No_agents_give_an_empty_list()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+
+        var agents = await ListActiveAgentsAsync(connectionString);
+
+        Assert.Empty(agents);
+    }
+
+    [Fact]
+    public async Task Agent_list_leaves_out_clients_and_admins()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        await SaveUserAsync(connectionString, "ana@example.com", UserRole.Client, "Ana Client");
+        await SaveUserAsync(connectionString, "admin@example.com", UserRole.Admin, "Admin User");
+        var agent = await SaveUserAsync(connectionString, "eva@example.com", UserRole.Agent, "Eva Agent");
+
+        var agents = await ListActiveAgentsAsync(connectionString);
+
+        Assert.Equal([new AgentResponse(agent.Id, "Eva Agent")], agents);
+    }
+
+    [Fact]
+    public async Task Agent_list_leaves_out_inactive_agents()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        await SaveUserAsync(connectionString, "old@example.com", UserRole.Agent, "Old Agent", isActive: false);
+        var agent = await SaveUserAsync(connectionString, "eva@example.com", UserRole.Agent, "Eva Agent");
+
+        var agents = await ListActiveAgentsAsync(connectionString);
+
+        Assert.Equal([new AgentResponse(agent.Id, "Eva Agent")], agents);
+    }
+
+    [Fact]
+    public async Task Agents_are_ordered_by_name()
+    {
+        // Plain names that every collation sorts the same way, so only the direction is under test.
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        var saved = await SaveAgentsAsync(connectionString, "Mario", "Eva", "Luis");
+
+        var agents = await ListActiveAgentsAsync(connectionString);
+
+        Assert.Equal(Expected(saved, "Eva", "Luis", "Mario"), agents);
+    }
+
+    [Fact]
+    public async Task Agents_are_ordered_by_name_with_the_icu_root_collation()
+    {
+        // Inserted out of order. The expected order differs from the test database's default en_US.utf8, which
+        // ignores the space ("Anabel" before "Ana María"), and from "C", which puts lowercase and accented names last.
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        var saved = await SaveAgentsAsync(connectionString, "Zoe", "Anabel", "ana", "Ana María", "Álvaro");
+
+        var agents = await ListActiveAgentsAsync(connectionString);
+
+        Assert.Equal(Expected(saved, "Álvaro", "ana", "Ana María", "Anabel", "Zoe"), agents);
+    }
+
+    [Fact]
+    public async Task Agents_with_the_same_name_are_ordered_by_id()
+    {
+        var connectionString = await fixture.CreateMigratedDatabaseAsync();
+        var first = new User("Eva Ruiz", "eva1@example.com", "hash", UserRole.Agent);
+        var second = new User("Eva Ruiz", "eva2@example.com", "hash", UserRole.Agent);
+        // PostgreSQL compares uuids byte by byte, which orders them like their lowercase canonical text. The higher
+        // id is inserted first, so the expected order is not also the insertion order.
+        var (lower, higher) = string.CompareOrdinal(first.Id.ToString(), second.Id.ToString()) < 0
+            ? (first, second)
+            : (second, first);
+        await SaveUserAsync(connectionString, higher);
+        await SaveUserAsync(connectionString, lower);
+
+        var agents = await ListActiveAgentsAsync(connectionString);
+
+        Assert.Equal([new AgentResponse(lower.Id, "Eva Ruiz"), new AgentResponse(higher.Id, "Eva Ruiz")], agents);
     }
 
     [Fact]
@@ -320,14 +401,40 @@ public class RepositoryTests(PostgreSqlFixture fixture)
     private static IServiceProvider Services(string connectionString) =>
         TestConfiguration.CreateInfrastructureServices(connectionString);
 
-    private static async Task<User> SaveUserAsync(
+    private static Task<IReadOnlyList<AgentResponse>> ListActiveAgentsAsync(string connectionString) =>
+        Services(connectionString).GetRequiredService<IUserRepository>().ListActiveAgentsAsync(CancellationToken.None);
+
+    // One save per name, so the rows are inserted in the order given.
+    private static async Task<Dictionary<string, User>> SaveAgentsAsync(string connectionString, params string[] names)
+    {
+        var agents = new Dictionary<string, User>();
+        foreach (var name in names)
+        {
+            agents[name] = await SaveUserAsync(connectionString, $"agent{agents.Count}@example.com", UserRole.Agent, name);
+        }
+
+        return agents;
+    }
+
+    private static List<AgentResponse> Expected(Dictionary<string, User> saved, params string[] names) =>
+        names.Select(name => new AgentResponse(saved[name].Id, name)).ToList();
+
+    private static Task<User> SaveUserAsync(
         string connectionString,
         string email,
         UserRole role = UserRole.Client,
-        string name = "Test User")
+        string name = "Test User",
+        bool isActive = true) =>
+        SaveUserAsync(connectionString, new User(name, email, "hash", role), isActive);
+
+    private static async Task<User> SaveUserAsync(string connectionString, User user, bool isActive = true)
     {
+        if (!isActive)
+        {
+            TestUsers.Deactivate(user);
+        }
+
         var services = Services(connectionString);
-        var user = new User(name, email, "hash", role);
         services.GetRequiredService<IUserRepository>().Add(user);
         await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
         return user;

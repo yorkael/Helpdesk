@@ -66,7 +66,7 @@ public sealed class AssignTicketRequestValidator : AbstractValidator<AssignTicke
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .MustAsync(async (assigneeId, cancellationToken) =>
-                await users.GetByIdAsync(assigneeId, cancellationToken) is { IsActive: true, Role: UserRole.Agent })
+                await users.GetByIdAsync(assigneeId, cancellationToken) is { IsActiveAgent: true })
             .WithMessage("The assignee must be an active agent.");
     }
 }

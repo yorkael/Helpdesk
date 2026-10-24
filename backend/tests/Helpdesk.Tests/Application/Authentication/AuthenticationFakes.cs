@@ -1,4 +1,5 @@
 using Helpdesk.Application.Abstractions;
+using Helpdesk.Application.Agents;
 using Helpdesk.Domain.Entities;
 
 namespace Helpdesk.Tests.Application.Authentication;
@@ -26,6 +27,18 @@ internal sealed class InMemoryUserRepository : IUserRepository
         NameLookups.Add(ids);
         return Task.FromResult<IReadOnlyDictionary<Guid, string>>(
             Users.Where(user => ids.Contains(user.Id)).ToDictionary(user => user.Id, user => user.Name));
+    }
+
+    /// <summary>How many times the agents were listed, so tests can check that a forbidden caller caused no query.</summary>
+    public int AgentListings { get; private set; }
+
+    // Filtered by the real rule but not ordered: the order depends on the database collation, so it is covered
+    // against the database.
+    public Task<IReadOnlyList<AgentResponse>> ListActiveAgentsAsync(CancellationToken cancellationToken)
+    {
+        AgentListings++;
+        return Task.FromResult<IReadOnlyList<AgentResponse>>(
+            Users.Where(user => user.IsActiveAgent).Select(user => new AgentResponse(user.Id, user.Name)).ToList());
     }
 
     public void Add(User user) => Users.Add(user);

@@ -1,5 +1,6 @@
 using Helpdesk.Domain.Entities;
 using Helpdesk.Domain.Enums;
+using Helpdesk.Tests.Application;
 
 namespace Helpdesk.Tests.Domain;
 
@@ -44,6 +45,24 @@ public class UserTests
 
         Assert.Throws<ArgumentException>(() => user.ChangePasswordHash(" "));
         Assert.Equal("old-hash", user.PasswordHash);
+    }
+
+    // The property and the expression a query filters by must give the same answer.
+    [Theory]
+    [InlineData(UserRole.Agent, true, true)]
+    [InlineData(UserRole.Agent, false, false)]
+    [InlineData(UserRole.Client, true, false)]
+    [InlineData(UserRole.Admin, true, false)]
+    public void Only_an_active_agent_is_an_active_agent(UserRole role, bool isActive, bool expected)
+    {
+        var user = new User("Ana Ruiz", "ana@example.com", "hash", role);
+        if (!isActive)
+        {
+            TestUsers.Deactivate(user);
+        }
+
+        Assert.Equal(expected, user.IsActiveAgent);
+        Assert.Equal(expected, User.ActiveAgent.Compile()(user));
     }
 
     [Fact]

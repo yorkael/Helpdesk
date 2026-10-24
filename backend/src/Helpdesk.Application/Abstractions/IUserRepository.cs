@@ -1,3 +1,4 @@
+using Helpdesk.Application.Agents;
 using Helpdesk.Domain.Entities;
 
 namespace Helpdesk.Application.Abstractions;
@@ -14,6 +15,12 @@ public interface IUserRepository
     Task<IReadOnlyDictionary<Guid, string>> GetNamesAsync(
         IReadOnlyCollection<Guid> ids,
         CancellationToken cancellationToken);
+
+    /// <returns>
+    /// The users who pass <see cref="User.ActiveAgent"/>, the same rule as assignment, ordered by name with the
+    /// Unicode root collation used for categories. Names are not unique, so equal names are ordered by id.
+    /// </returns>
+    Task<IReadOnlyList<AgentResponse>> ListActiveAgentsAsync(CancellationToken cancellationToken);
 
     void Add(User user);
 }

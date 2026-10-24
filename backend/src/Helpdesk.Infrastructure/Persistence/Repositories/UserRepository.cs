@@ -1,4 +1,5 @@
 using Helpdesk.Application.Abstractions;
+using Helpdesk.Application.Agents;
 using Helpdesk.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,6 +24,15 @@ internal sealed class UserRepository(HelpdeskDbContext context) : IUserRepositor
             .Where(user => ids.Contains(user.Id))
             .Select(user => new { user.Id, user.Name })
             .ToDictionaryAsync(user => user.Id, user => user.Name, cancellationToken);
+
+    /// <summary>Only id and name are read; the projection is not tracked.</summary>
+    public async Task<IReadOnlyList<AgentResponse>> ListActiveAgentsAsync(CancellationToken cancellationToken) =>
+        await context.Users
+            .Where(User.ActiveAgent)
+            .OrderBy(user => EF.Functions.Collate(user.Name, Collations.NameOrder))
+            .ThenBy(user => user.Id)
+            .Select(user => new AgentResponse(user.Id, user.Name))
+            .ToListAsync(cancellationToken);
 
     public void Add(User user) => context.Users.Add(user);
 }

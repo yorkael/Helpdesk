@@ -1,4 +1,5 @@
 using FluentValidation;
+using Helpdesk.Application.Agents;
 using Helpdesk.Application.Authentication;
 using Helpdesk.Application.Categories;
 using Helpdesk.Application.Tickets;
@@ -18,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<TicketCommentService>();
         services.AddScoped<TicketHistoryService>();
         services.AddScoped<CategoryService>();
+        services.AddScoped<AgentService>();
 
         return services;
     }
