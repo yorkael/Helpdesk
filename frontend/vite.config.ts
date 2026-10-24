@@ -7,5 +7,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Vitest replaces CSS imports with an empty string, ?raw included; the contrast test needs tokens.css as written.
+    css: { include: [/\/src\/styles\/tokens\.css(\?|$)/] },
   },
 })

@@ -1,0 +1,49 @@
+/* Hover styles only on devices with a real hover pointer, so taps on touch screens do not leave them stuck. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+@layer base {
+  body {
+    min-height: 100dvh;
+    background-color: var(--color-paper);
+    background-image: radial-gradient(var(--color-line-strong) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* Placeholders use the subtle token: 5.00:1 on paper and 5.31:1 on surface. */
+  ::placeholder {
+    color: var(--color-subtle);
+    opacity: 1;
+  }
+}
+
+/* Components move only under motion-safe:; this is the safety net for anything that does not. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

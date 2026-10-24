@@ -1,3 +1,5 @@
+import '@fontsource-variable/bricolage-grotesque'
+import '@fontsource-variable/figtree'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

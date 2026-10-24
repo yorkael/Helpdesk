@@ -1,0 +1,67 @@
+/* Fieldnote design tokens: the single source for colors, type, radii, shadows and motion. */
+
+@theme {
+  /* Only these colors exist: the default Tailwind palette is removed. */
+  --color-*: initial;
+
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #1A1830;
+  --color-paper: #F7F8FC;
+  --color-surface: #FFFFFF;
+  --color-line: #E3E2EE;
+  --color-line-strong: #D5D3E4;
+  --color-control-line: #8D8AA3;
+  --color-muted: #5E5C70;
+  --color-subtle: #6B6980;
+  --color-primary: #5B3FD6;
+  --color-primary-hover: #4A30B8;
+  --color-primary-soft: #EFEBFF;
+  --color-on-primary: #FFFFFF;
+  --color-highlight: #FFD25E;
+  --color-internal-bg: #FFF8E5;
+  --color-internal-line: #F0DDA6;
+  --color-internal-dot: #E0A800;
+  --color-danger: #B3261E;
+
+  /* Status names are the API values in kebab case: InProgress -> in-progress. */
+  --color-status-open-bg: #E4ECFF;
+  --color-status-open-fg: #1D3FA5;
+  --color-status-in-progress-bg: #FFEFD0;
+  --color-status-in-progress-fg: #764500;
+  --color-status-waiting-on-customer-bg: #F1E8FF;
+  --color-status-waiting-on-customer-fg: #4C2D9E;
+  --color-status-resolved-bg: #DCF4E3;
+  --color-status-resolved-fg: #145A2B;
+  --color-status-closed-bg: #ECEBF1;
+  --color-status-closed-fg: #40404F;
+
+  --color-priority-urgent-text: #B3261E;
+  --color-priority-urgent-bar: #B3261E;
+  --color-priority-high-text: #A24B00;
+  --color-priority-high-bar: #C25E00;
+  --color-priority-medium-text: #5E5C70;
+  --color-priority-medium-bar: #7A7791;
+  --color-priority-low-text: #6B6980;
+  --color-priority-low-bar: #8D8AA3;
+  --color-priority-bar-off: #DAD8E6;
+
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-tag: 6px;
+
+  --shadow-paper: 0 1px 0 rgb(26 24 48 / 0.05), 0 14px 28px -18px rgb(26 24 48 / 0.28);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Tailwind 4 has no theme namespace for durations; use them as duration-(--duration-press). */
+:root {
+  --duration-press: 140ms;
+  --duration-hover: 120ms;
+  --duration-popover: 180ms;
+  --duration-dialog: 220ms;
+  --duration-dialog-exit: 160ms;
+}
