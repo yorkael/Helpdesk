@@ -5,7 +5,7 @@ export function AppLayout() {
     <div className="flex min-h-dvh flex-col">
       <a
         href="#main"
-        className="sr-only rounded-control bg-surface px-4 py-2 text-sm font-semibold text-primary shadow-paper focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-10"
+        className="fixed top-3 left-3 z-10 rounded-control border border-line-strong bg-surface px-4 py-2 text-sm font-semibold text-ink shadow-paper not-focus:sr-only"
       >
         Skip to content
       </a>

@@ -23,6 +23,15 @@ describe('AppLayout', () => {
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main')
   })
 
+  // focus:not-sr-only resets padding to 0 and outranks px-4 and py-2, so the link is hidden only while unfocused.
+  it('hides the skip link only while it is not focused', async () => {
+    renderLayout()
+    const link = await screen.findByRole('link', { name: 'Skip to content' })
+
+    expect(link).toHaveClass('not-focus:sr-only', 'px-4', 'py-2')
+    expect(link).not.toHaveClass('focus:not-sr-only')
+  })
+
   it('renders the current page inside the main landmark', async () => {
     renderLayout()
 
