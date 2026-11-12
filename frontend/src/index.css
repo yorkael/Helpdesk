@@ -1,3 +1,8 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
 @import "./styles/base.css";
+
+/* Tests spell out class names to assert them; they must not put those classes in the production CSS. */
+@source not "./**/*.test.ts";
+@source not "./**/*.test.tsx";
+@source not "./test/**";
