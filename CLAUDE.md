@@ -6,8 +6,8 @@ Sistema de tickets de soporte. Proyecto público de portafolio de Yorkael, const
 - Backend: ASP.NET Core .NET 10 (LTS), C#, EF Core, PostgreSQL, FluentValidation, xUnit, Testcontainers
   (El PDF de especificación dice .NET 8; esa parte quedó desactualizada. Usar .NET 10: .NET 8 y 9 terminan soporte el 10 de noviembre de 2026.)
   Planned: Serilog (requisito no funcional del PDF, sin HU asignada).
-- Frontend: React, TypeScript, Vite, Tailwind CSS, oxlint
-  Planned: Zustand (HU-13, Sprint 3).
+- Frontend: React 19, TypeScript estricto, Vite, Tailwind CSS 4 (tokens en `frontend/src/styles/tokens.css`, sin la paleta por defecto), React Router (`RouterProvider` se importa de `react-router/dom`), TanStack Query para el estado de servidor, oxlint; pruebas con Vitest, Testing Library, user-event y jsdom (fetch mockeado con `vi.fn`, sin MSW)
+  Planned: Zustand solo para la sesión (HU-13, etapa 2).
 - DevOps: Dockerfiles multi-stage (`backend/Dockerfile` con targets `runtime` y `migrator`, `frontend/Dockerfile` con nginx sin root) y docker-compose con PostgreSQL, migrate (EF migrations bundle), API y frontend (HU-11). Healthcheck de la api sobre `GET /health` (#34): bash con `/dev/tcp` porque la imagen no trae curl ni wget, envuelto en `timeout 4` porque el timeout de Docker deja procesos `head` colgados si la API no responde; `web` espera a que la api esté healthy
   CI con GitHub Actions (HU-12): `.github/workflows/ci.yml`, en PR y push a `main`, jobs `backend` (restore, build Release, test con Testcontainers) y `frontend` (install, lint, test con Vitest, build) en `ubuntu-24.04`. `backend` y `frontend` son checks obligatorios del ruleset "Protect main": no renombrar los jobs sin cambiar el ruleset a la vez (si no, todos los PR quedan esperando un check que nunca llega). Sin filtros de paths (un check obligatorio que no corre bloquea el merge), `permissions: contents: read`, sin secretos, nunca `pull_request_target`. Acciones fijadas por SHA de commit (no el del tag anotado) con `# vX.Y.Z`, versiones con al menos dos semanas. Versiones leídas del repo: SDK de `global.json`, Node de `frontend/.nvmrc` (duplicada en `frontend/Dockerfile`: actualizar juntas), pnpm del `packageManager`. Caché solo de pnpm (la de NuGet exige `packages.lock.json`, que no hay)
 - Despliegue (planned, HU-14): backend en Railway, frontend en Vercel
@@ -39,6 +39,14 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Todo endpoint de escritura valida con FluentValidation.
 - Errores con respuestas consistentes (problem+json).
 - Cada funcionalidad nueva lleva sus pruebas.
+- Dependencias nuevas: versión exacta en `package.json` (sin `^` ni `~`), publicada hace al menos dos semanas.
+
+## Reglas del frontend
+- `className` en los primitivos de `src/ui` solo para disposición (ancho, márgenes, posición), nunca colores: no hay twMerge, así que una clase de color del consumidor competiría con la del primitivo y ganaría la que Tailwind emita después, no la última escrita.
+- El token `subtle` sobre `line` no cumple contraste (4.14:1): no se combinan.
+- TypeScript no comprueba los atributos JSX con guion (`aria-*`, `data-*`), así que `Omit` no los protege. La garantía es el orden de props en ejecución (los del primitivo después del spread del consumidor) más sus pruebas.
+- Formularios (desde la etapa 2 de HU-13): protección contra doble envío en el propio manejador, no solo con el botón en loading, y foco al primer campo inválido tras un envío fallido.
+- La galería `/dev/gallery` solo existe en desarrollo: la condición `import.meta.env.DEV` va en línea a nivel de módulo en `src/app/router.ts` para que el build de producción elimine el `import()`. No moverla a una función con parámetro.
 
 ## Fuera de alcance
 - Este proyecto es independiente de AgroSystem (SaaS privado y comercial). No reutilizar su código, nombres, dominio ni datos.
@@ -62,6 +70,6 @@ Capas: `Helpdesk.Api` -> `Helpdesk.Application` -> `Helpdesk.Domain`; `Helpdesk.
 - Clave de firma JWT local (mínimo 32 bytes aleatorios en base64; sin ella la API y `dotnet ef` no arrancan): user-secrets de Api, clave `Jwt:SigningKey`; fuera de local, variable `Jwt__SigningKey`. Generarla en PowerShell 5.1 o 7: `$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); dotnet user-secrets set "Jwt:SigningKey" ([Convert]::ToBase64String($bytes)) --project backend/src/Helpdesk.Api`; alternativa: `openssl rand -base64 48`
 - Aplicar migraciones: `dotnet ef database update --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api`
 - Nueva migración: `dotnet ef migrations add <Name> --project backend/src/Helpdesk.Infrastructure --startup-project backend/src/Helpdesk.Api --output-dir Persistence/Migrations`
-- Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`; lint con `pnpm lint` (oxlint)
+- Frontend (gestor de paquetes: pnpm, no mezclar con npm): `cd frontend && pnpm install && pnpm dev`; lint con `pnpm lint` (oxlint con `--deny-warnings`); pruebas con `pnpm test` (Vitest); galería de primitivos en http://localhost:5173/dev/gallery, solo con `pnpm dev`. Node `^22.22.2 || ^24.15.0 || >=26.0.0` (el rango que exige jsdom 30; excluye Node 23 y 25; CI y Docker usan `frontend/.nvmrc`)
 - Validar el workflow antes de subirlo: `docker run --rm -v "$(pwd):/repo" -w /repo rhysd/actionlint:1.7.12` desde la raíz (en Git Bash de Windows: `MSYS_NO_PATHCONV=1` y `$(pwd -W)`)
 - Reproducir CI en local: backend `dotnet restore backend/Helpdesk.sln`, `dotnet build backend/Helpdesk.sln --no-restore --configuration Release`, `dotnet test backend/Helpdesk.sln --no-build --configuration Release`; frontend `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test`, `pnpm build`

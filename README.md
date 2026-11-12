@@ -13,8 +13,8 @@ A support ticket system built as a public portfolio project: a layered ASP.NET C
 | Backend | ASP.NET Core on .NET 10, C#, EF Core, FluentValidation |
 | Authentication | JWT bearer access tokens, rotating refresh tokens, role-based policies |
 | Database | PostgreSQL 18 |
-| Tests | xUnit, Testcontainers, WebApplicationFactory |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Tests | xUnit, Testcontainers, WebApplicationFactory; Vitest, Testing Library and jsdom for the frontend |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query |
 | Tooling | pnpm, oxlint |
 | Containers | Docker multi-stage images, Docker Compose, nginx |
 | CI | GitHub Actions |
@@ -67,7 +67,7 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 ### Prerequisites
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Node.js](https://nodejs.org/) 22.12 or later
+- [Node.js](https://nodejs.org/) `^22.22.2 || ^24.15.0 || >=26.0.0`, the range jsdom 30 requires (Node 23 and 25 are excluded). The `engines` field in `frontend/package.json` only documents it: pnpm does not enforce it while the lockfile is up to date. CI and Docker use `frontend/.nvmrc`
 - [pnpm](https://pnpm.io/installation) (the version is pinned in `frontend/package.json`)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (full stack, local database and integration tests)
 
@@ -239,6 +239,14 @@ pnpm dev
 
 The app runs on http://localhost:5173.
 
+```bash
+pnpm lint    # oxlint, warnings fail
+pnpm test    # Vitest with Testing Library on jsdom
+pnpm build   # type check and production build
+```
+
+In development, http://localhost:5173/dev/gallery shows every UI primitive in its states (statuses, priorities, badges, fields, buttons, loading and empty states). The route exists only in development: the production build leaves the gallery out entirely.
+
 ## Continuous integration
 
 The [CI workflow](.github/workflows/ci.yml) runs on every pull request to `main` and every push to `main`, and can also be started by hand from the Actions tab. It has two jobs, which run in parallel on `ubuntu-24.04`:
@@ -361,3 +369,12 @@ Known limitations, measured with Docker Desktop:
 ## License
 
 [MIT](LICENSE)
+
+### Fonts
+
+The frontend bundles two typefaces, installed from [Fontsource](https://fontsource.org/) and served by the app itself:
+
+- [Bricolage Grotesque](https://github.com/ateliertriay/bricolage), copyright 2022 The Bricolage Grotesque Project Authors, for headings.
+- [Figtree](https://github.com/erikdkennedy/figtree), copyright 2022 The Figtree Project Authors, for body text.
+
+Both are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/), not under the project's MIT license.
