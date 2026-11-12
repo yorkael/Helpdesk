@@ -246,7 +246,7 @@ The [CI workflow](.github/workflows/ci.yml) runs on every pull request to `main`
 | Job | Steps |
 |---|---|
 | `backend` | `dotnet restore`, `dotnet build` in Release, `dotnet test` (including the Testcontainers tests, on the runner's Docker) |
-| `frontend` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm build` |
+| `frontend` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test` (Vitest), `pnpm build` |
 
 `backend` and `frontend` are required status checks in the ruleset that protects `main`, so a pull request cannot be merged until both pass. **Do not rename these jobs:** the ruleset matches checks by name, and after a rename every pull request waits for a check that never reports. A rename has to change the ruleset at the same time.
 
@@ -264,6 +264,7 @@ dotnet test backend/Helpdesk.sln --no-build --configuration Release
 cd frontend
 pnpm install --frozen-lockfile
 pnpm lint
+pnpm test
 pnpm build
 ```
 
