@@ -58,14 +58,19 @@ describe('PriorityIndicator', () => {
     expect(bars(container).map((bar) => bar.getAttribute('data-active'))).toEqual(expected)
   })
 
+  // Checks each bar's color against its own state, not its position: which bars are lit is the ordering test's job.
   it.each([
-    ['Low', ['bg-priority-low-bar', 'bg-priority-bar-off', 'bg-priority-bar-off', 'bg-priority-bar-off']],
-    ['Medium', ['bg-priority-medium-bar', 'bg-priority-medium-bar', 'bg-priority-bar-off', 'bg-priority-bar-off']],
-    ['High', ['bg-priority-high-bar', 'bg-priority-high-bar', 'bg-priority-high-bar', 'bg-priority-bar-off']],
-    ['Urgent', ['bg-priority-urgent-bar', 'bg-priority-urgent-bar', 'bg-priority-urgent-bar', 'bg-priority-urgent-bar']],
-  ] as const)('colors the active bars of %s with its bar color and the rest with the off color', (priority, expected) => {
+    ['Low', 'bg-priority-low-bar'],
+    ['Medium', 'bg-priority-medium-bar'],
+    ['High', 'bg-priority-high-bar'],
+    ['Urgent', 'bg-priority-urgent-bar'],
+  ] as const)('colors the active bars of %s with %s and the rest with the off color', (priority, barColor) => {
     const { container } = render(<PriorityIndicator priority={priority} />)
+    const allBars = bars(container)
 
-    expect(bars(container).map((bar) => [...bar.classList].find((name) => name.startsWith('bg-')))).toEqual(expected)
+    expect(allBars).toHaveLength(4)
+    for (const bar of allBars) {
+      expect(bar).toHaveClass(bar.getAttribute('data-active') === 'true' ? barColor : 'bg-priority-bar-off')
+    }
   })
 })
