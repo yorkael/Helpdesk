@@ -4,6 +4,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Same origin as the nginx proxy in Docker, so the API needs no CORS. Port from the API's "http" launch profile.
+  server: { proxy: { '/api': 'http://localhost:5038' } },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
