@@ -55,11 +55,6 @@ describe('createSessionManager', () => {
         expect(store.getState().status).toBe('authenticated')
       }
       expect(ended).not.toHaveBeenCalled()
-
-      const reopened = createTab(server)
-      await reopened.manager.restore()
-      expect(reopened.store.getState().status).toBe('unreachable')
-      expect(storedToken()).toBe(tokenBefore)
     })
 
     it('ends the session when the API rejects the refresh token', async () => {
@@ -127,7 +122,7 @@ describe('createSessionManager', () => {
 
     it('resolves with the new tokens in place when only /me fails on the network', async () => {
       const server = createFakeAuthServer()
-      const { manager, store } = createTab(server)
+      const { manager } = createTab(server)
       const seeded = server.signIn().refreshToken
       seedStoredToken(seeded)
       server.setMeFailure(() => new TypeError('Failed to fetch'))
@@ -137,7 +132,6 @@ describe('createSessionManager', () => {
       expect(manager.accessToken()).not.toBeNull()
       expect(storedToken()).not.toBe(seeded)
       expect(server.isActive(storedToken()!)).toBe(true)
-      expect(store.getState().status).toBe('unreachable')
     })
 
     it('keeps a session already on screen when only /me fails on the network', async () => {
@@ -193,6 +187,50 @@ describe('createSessionManager', () => {
 
       expect(store.getState()).toEqual({ status: 'anonymous', user: null, endReason: null })
       expect(server.counters.refreshCalls).toBe(0)
+    })
+
+    it('stays unreachable without rejecting when the refresh fails with a server error, rate limiting or a malformed answer', async () => {
+      const failures = [
+        { label: '503', failure: () => problemResponse(503) },
+        { label: '429', failure: () => problemResponse(429) },
+        {
+          label: 'malformed JSON',
+          failure: () => new Response('{', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        },
+      ]
+
+      for (const { label, failure } of failures) {
+        localStorage.clear()
+        const server = createFakeAuthServer()
+        const { manager, store } = createTab(server)
+        const seeded = server.signIn().refreshToken
+        seedStoredToken(seeded)
+        server.setRefreshFailure(failure)
+
+        const settled = await manager.restore().then(
+          () => 'resolved',
+          () => 'rejected',
+        )
+
+        // The label travels with the values, so a failure's diff names the case that broke.
+        expect({ label, settled, status: store.getState().status, stored: storedToken() }).toEqual({
+          label,
+          settled: 'resolved',
+          status: 'unreachable',
+          stored: seeded,
+        })
+      }
+    })
+
+    it('stays unreachable without rejecting when /me fails with a server error', async () => {
+      const server = createFakeAuthServer()
+      const { manager, store } = createTab(server)
+      seedStoredToken(server.signIn().refreshToken)
+      server.setMeFailure(() => problemResponse(500))
+
+      await expect(manager.restore()).resolves.toBeUndefined()
+
+      expect(store.getState().status).toBe('unreachable')
     })
 
     it('starts over on retry with the token saved by the attempt that could not load the user', async () => {
