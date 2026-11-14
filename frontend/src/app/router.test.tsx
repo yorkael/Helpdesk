@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { createMemoryRouter, type RouteObject } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SLOW_RENDER_WAIT_MS, SLOW_TEST_TIMEOUT_MS } from '../test/timeouts'
 import { routes } from './router'
 
 function renderAt(path: string) {
@@ -31,10 +32,16 @@ describe('routes', () => {
     expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/')
   })
 
-  it('serves the component gallery at /dev/gallery in development', async () => {
+  it('serves the component gallery at /dev/gallery in development', { timeout: SLOW_TEST_TIMEOUT_MS }, async () => {
     renderAt('/dev/gallery')
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Fieldnote component gallery' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole(
+        'heading',
+        { level: 1, name: 'Fieldnote component gallery' },
+        { timeout: SLOW_RENDER_WAIT_MS },
+      ),
+    ).toBeInTheDocument()
   })
 
   it('does not register the gallery when DEV is false', async () => {

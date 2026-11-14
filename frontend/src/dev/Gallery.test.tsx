@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { SLOW_TEST_TIMEOUT_MS } from '../test/timeouts'
 import { Gallery } from './Gallery'
 
 function section(name: string): HTMLElement {
@@ -7,7 +8,8 @@ function section(name: string): HTMLElement {
   return heading.closest('section') as HTMLElement
 }
 
-describe('Gallery', () => {
+// Whichever test runs first pays for the gallery's first render, the slowest in the suite.
+describe('Gallery', { timeout: SLOW_TEST_TIMEOUT_MS }, () => {
   it('shows every ticket status', () => {
     render(<Gallery />)
 
