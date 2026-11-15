@@ -13,9 +13,16 @@ export interface Credentials {
   password: string
 }
 
+// The login and refresh answers as the API sends them.
 export interface AuthTokens {
   accessToken: string
   accessTokenExpiresAt: string
   refreshToken: string
   refreshTokenExpiresAt: string
+}
+
+// What the client checks and uses from those answers; the expiry dates are neither read nor checked.
+export interface SessionTokens {
+  accessToken: string
+  refreshToken: string
 }

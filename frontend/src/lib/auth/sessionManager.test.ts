@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { ANA, ANA_CREDENTIALS, createFakeAuthServer } from '../../test/fakeAuthServer'
 import { problemResponse } from '../../test/responses'
 import { createRestoredTab, createTab } from '../../test/sessionTab'
+import type { AuthApi } from './authApi'
+import { MalformedAuthResponseError } from './MalformedAuthResponseError'
 import { REFRESH_TOKEN_KEY } from './refreshTokenStorage'
 
 const storedToken = () => localStorage.getItem(REFRESH_TOKEN_KEY)
@@ -190,22 +192,27 @@ describe('createSessionManager', () => {
     })
 
     it('stays unreachable without rejecting when the refresh fails with a server error, rate limiting or a malformed answer', async () => {
-      const failures = [
+      const failures: Array<{ label: string; failure?: () => Response; authApi?: Partial<AuthApi> }> = [
         { label: '503', failure: () => problemResponse(503) },
         { label: '429', failure: () => problemResponse(429) },
         {
           label: 'malformed JSON',
           failure: () => new Response('{', { status: 200, headers: { 'Content-Type': 'application/json' } }),
         },
+        {
+          // The client's own check is authApi.test's job; here only what the manager does with its error.
+          label: 'no tokens',
+          authApi: { refresh: async () => Promise.reject(new MalformedAuthResponseError('refreshToken')) },
+        },
       ]
 
-      for (const { label, failure } of failures) {
+      for (const { label, failure, authApi } of failures) {
         localStorage.clear()
         const server = createFakeAuthServer()
-        const { manager, store } = createTab(server)
+        const { manager, store, ended } = createTab(server, { authApi })
         const seeded = server.signIn().refreshToken
         seedStoredToken(seeded)
-        server.setRefreshFailure(failure)
+        server.setRefreshFailure(failure ?? null)
 
         const settled = await manager.restore().then(
           () => 'resolved',
@@ -213,11 +220,12 @@ describe('createSessionManager', () => {
         )
 
         // The label travels with the values, so a failure's diff names the case that broke.
-        expect({ label, settled, status: store.getState().status, stored: storedToken() }).toEqual({
+        expect({ label, settled, status: store.getState().status, stored: storedToken(), ended: ended.mock.calls.length }).toEqual({
           label,
           settled: 'resolved',
           status: 'unreachable',
           stored: seeded,
+          ended: 0,
         })
       }
     })
@@ -262,7 +270,7 @@ describe('createSessionManager', () => {
       expect(reloaded.store.getState().status).toBe('authenticated')
     })
 
-    it('saves nothing and keeps the state when the login is rejected or cannot reach the API', async () => {
+    it('saves nothing and keeps the state when the login is rejected, cannot reach the API or answers without tokens', async () => {
       const server = createFakeAuthServer()
       const { manager, store } = createTab(server)
       await manager.restore()
@@ -274,6 +282,16 @@ describe('createSessionManager', () => {
 
       expect(storedToken()).toBeNull()
       expect(store.getState()).toBe(stateBefore)
+
+      const noTokens = createTab(createFakeAuthServer(), {
+        authApi: { login: async () => Promise.reject(new MalformedAuthResponseError('refreshToken')) },
+      })
+      await noTokens.manager.restore()
+      const noTokensBefore = noTokens.store.getState()
+      await expect(noTokens.manager.login(ANA_CREDENTIALS)).rejects.toBeInstanceOf(MalformedAuthResponseError)
+
+      expect(storedToken()).toBeNull()
+      expect(noTokens.store.getState()).toBe(noTokensBefore)
     })
   })
 

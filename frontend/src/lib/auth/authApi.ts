@@ -1,9 +1,10 @@
 import { readResult, sendJson, type Fetch } from '../api/http'
-import type { AuthTokens, Credentials, CurrentUser } from './types'
+import { requireTokens } from './requireTokens'
+import type { Credentials, CurrentUser, SessionTokens } from './types'
 
 export interface AuthApi {
-  login(credentials: Credentials): Promise<AuthTokens>
-  refresh(refreshToken: string, signal?: AbortSignal): Promise<AuthTokens>
+  login(credentials: Credentials): Promise<SessionTokens>
+  refresh(refreshToken: string, signal?: AbortSignal): Promise<SessionTokens>
   logout(refreshToken: string): Promise<void>
   me(accessToken: string): Promise<CurrentUser>
 }
@@ -14,8 +15,8 @@ export function createAuthApi(fetchFn: Fetch): AuthApi {
     readResult<T>(await sendJson(fetchFn, path, { method: 'POST', body: JSON.stringify(body), signal }))
 
   return {
-    login: (credentials) => post<AuthTokens>('/api/auth/login', credentials),
-    refresh: (refreshToken, signal) => post<AuthTokens>('/api/auth/refresh', { refreshToken }, signal),
+    login: async (credentials) => requireTokens(await post<unknown>('/api/auth/login', credentials)),
+    refresh: async (refreshToken, signal) => requireTokens(await post<unknown>('/api/auth/refresh', { refreshToken }, signal)),
     logout: (refreshToken) => post<void>('/api/auth/logout', { refreshToken }),
     me: async (accessToken) => readResult<CurrentUser>(await sendJson(fetchFn, '/api/auth/me', { method: 'GET', accessToken })),
   }

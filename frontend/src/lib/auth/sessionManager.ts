@@ -4,7 +4,7 @@ import type { AuthApi } from './authApi'
 import type { RefreshLock } from './refreshLock'
 import type { RefreshTokenStorage } from './refreshTokenStorage'
 import type { SessionEndReason, SessionStore } from './sessionStore'
-import type { AuthTokens, Credentials } from './types'
+import type { Credentials, SessionTokens } from './types'
 
 // RefreshTokenMaxLength in the API's validators: a longer stored value can only be corrupt.
 const MAX_REFRESH_TOKEN_LENGTH = 128
@@ -60,7 +60,7 @@ export function createSessionManager({
     }
   }
 
-  async function exchange(sent: string): Promise<AuthTokens> {
+  async function exchange(sent: string): Promise<SessionTokens> {
     const tokens = await authApi.refresh(sent, createTimeoutSignal())
     // Saved before the lock is released: whoever holds it next, in this tab or another, must read the new token.
     storage.set(tokens.refreshToken)
@@ -70,7 +70,7 @@ export function createSessionManager({
 
   // The API revokes every session of the user when it sees a refresh token twice, so the token is read and
   // replaced only while holding the lock that every tab shares. Resolves with null when the session is over.
-  async function rotateInsideLock(): Promise<AuthTokens | null> {
+  async function rotateInsideLock(): Promise<SessionTokens | null> {
     const stored = storage.get()
     if (stored === null || !isWellFormed(stored)) {
       storage.remove()

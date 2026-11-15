@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { createAuthApi } from '../lib/auth/authApi'
+import { createAuthApi, type AuthApi } from '../lib/auth/authApi'
 import { createRefreshLock, type RefreshLock } from '../lib/auth/refreshLock'
 import { createRefreshTokenStorage, REFRESH_TOKEN_KEY } from '../lib/auth/refreshTokenStorage'
 import { createSessionManager } from '../lib/auth/sessionManager'
@@ -10,13 +10,15 @@ interface TabOptions {
   /** Share one lock between tabs to model Web Locks; give each tab its own to model the fallback. */
   lock?: RefreshLock
   createTimeoutSignal?: () => AbortSignal
+  /** Replaces calls of the real API client, so a manager rule can be tested without the client's own checks. */
+  authApi?: Partial<AuthApi>
 }
 
 // One browser tab: its own manager, store and memory, sharing jsdom's localStorage with every other tab.
-export function createTab(server: FakeAuthServer, { lock, createTimeoutSignal }: TabOptions = {}) {
+export function createTab(server: FakeAuthServer, { lock, createTimeoutSignal, authApi }: TabOptions = {}) {
   const store = createSessionStore()
   const manager = createSessionManager({
-    authApi: createAuthApi(server.fetch),
+    authApi: { ...createAuthApi(server.fetch), ...authApi },
     storage: createRefreshTokenStorage(() => localStorage),
     lock: lock ?? createRefreshLock(undefined),
     store,

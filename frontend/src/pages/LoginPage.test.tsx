@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionContext } from '../app/session/sessionContext'
 import { ApiError } from '../lib/api/ApiError'
 import type { ProblemDetails } from '../lib/api/problem'
+import { MalformedAuthResponseError } from '../lib/auth/MalformedAuthResponseError'
 import { createFakeSession } from '../test/fakeSession'
 import { LoginPage } from './LoginPage'
 
@@ -119,6 +120,17 @@ describe('LoginPage', () => {
       )
       unmount()
     }
+  })
+
+  it('says something went wrong when the API answered without tokens, since the server was reached', async () => {
+    const user = userEvent.setup()
+    const { manager } = renderLogin()
+    manager.login.mockRejectedValue(new MalformedAuthResponseError('refreshToken'))
+
+    await fillIn(user)
+    await user.click(signInButton())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again later.')
   })
 
   it('shows the button as loading while signing in', async () => {
