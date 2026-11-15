@@ -47,6 +47,12 @@ describe('LoginPage', () => {
     expect(screen.queryByText('Your session expired. Please sign in again.')).not.toBeInTheDocument()
   })
 
+  it('says why the user is here when the session ended in another tab', () => {
+    renderLogin('endedElsewhere')
+
+    expect(screen.getByRole('status')).toHaveTextContent('Your session ended in another tab. Please sign in again.')
+  })
+
   it('uses an email field and a masked password field', () => {
     renderLogin()
 
@@ -122,13 +128,17 @@ describe('LoginPage', () => {
       { label: '429', error: apiError(429) },
       { label: 'no tokens', error: new MalformedAuthResponseError('refreshToken') },
     ]
-
     for (const { label, error } of failures) {
       const user = userEvent.setup()
+      // A fresh form per case, so this never depends on submitting again after a failure. Pasted, not typed:
+      // typing key by key is what made this test slow.
       const { manager, unmount } = renderLogin()
       manager.login.mockRejectedValue(error)
+      await user.click(screen.getByLabelText('Email'))
+      await user.paste('ana@example.com')
+      await user.click(screen.getByLabelText('Password'))
+      await user.paste('ana-password')
 
-      await fillIn(user)
       await user.click(signInButton())
 
       // The label travels with the result, so a failure names the case that broke.

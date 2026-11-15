@@ -3,7 +3,8 @@ import type { CurrentUser } from './types'
 
 export type SessionStatus = 'restoring' | 'authenticated' | 'anonymous' | 'unreachable'
 
-export type SessionEndReason = 'expired' | 'signedOut'
+// endedElsewhere: another tab removed the saved token, by signing out or on an expiry.
+export type SessionEndReason = 'expired' | 'signedOut' | 'endedElsewhere'
 
 // No tokens here: whatever React can read, a component or devtools could leak.
 export interface SessionState {

@@ -6,10 +6,10 @@ import { SessionProvider } from '../app/session/SessionProvider'
 
 // The providers App puts around the router, with a session the test controls, usually createTab(server).
 export function renderWithSession(ui: ReactNode, session: AppSession, queryClient = new QueryClient()) {
-  render(
+  const { unmount } = render(
     <QueryClientProvider client={queryClient}>
       <SessionProvider session={session}>{ui}</SessionProvider>
     </QueryClientProvider>,
   )
-  return { queryClient }
+  return { queryClient, unmount }
 }

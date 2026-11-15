@@ -28,6 +28,7 @@ export function createFakeSession(
     retryRestore: vi.fn<SessionManager['retryRestore']>(async () => undefined),
     login: vi.fn<SessionManager['login']>(async () => undefined),
     logout: vi.fn<SessionManager['logout']>(async () => undefined),
+    endedInAnotherTab: vi.fn<SessionManager['endedInAnotherTab']>(),
     onEnded: vi.fn<SessionManager['onEnded']>((listener) => {
       listeners.add(listener)
       return () => {

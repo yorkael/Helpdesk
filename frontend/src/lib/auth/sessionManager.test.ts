@@ -322,6 +322,31 @@ describe('createSessionManager', () => {
     })
   })
 
+  describe('a session ended in another tab', () => {
+    it('ends this tab with its own reason and forgets the access token', async () => {
+      const server = createFakeAuthServer()
+      const { manager, store, ended } = await createRestoredTab(server)
+
+      manager.endedInAnotherTab()
+
+      expect(store.getState()).toMatchObject({ status: 'anonymous', user: null, endReason: 'endedElsewhere' })
+      expect(manager.accessToken()).toBeNull()
+      expect(ended).toHaveBeenCalledExactlyOnceWith('endedElsewhere')
+    })
+
+    it('leaves a tab that was not signed in as it was', async () => {
+      const server = createFakeAuthServer()
+      const { manager, store, ended } = createTab(server)
+      // Set by hand, so this does not depend on how restore() reaches the anonymous state.
+      store.setState({ status: 'anonymous', user: null, endReason: null })
+
+      manager.endedInAnotherTab()
+
+      expect(store.getState()).toEqual({ status: 'anonymous', user: null, endReason: null })
+      expect(ended).not.toHaveBeenCalled()
+    })
+  })
+
   describe('logout', () => {
     it('sends the stored refresh token to the API, which revokes the session', async () => {
       const server = createFakeAuthServer()
@@ -333,6 +358,31 @@ describe('createSessionManager', () => {
       expect(server.observed.sentLogoutTokens).toEqual([tokenBefore])
       expect(server.isActive(tokenBefore)).toBe(false)
       expect(server.activeSessionCount()).toBe(0)
+    })
+
+    it('does nothing when repeated, as after a double click on Sign out', async () => {
+      const server = createFakeAuthServer()
+      const { manager, ended } = await createRestoredTab(server)
+
+      await manager.logout()
+      const sentAfterFirst = [...server.observed.sentLogoutTokens]
+      await manager.logout()
+
+      expect(ended).toHaveBeenCalledOnce()
+      expect(server.observed.sentLogoutTokens).toEqual(sentAfterFirst)
+    })
+
+    it('still ends a session kept only in memory, with no saved token to send', async () => {
+      const server = createFakeAuthServer()
+      const { manager, store, ended } = await createRestoredTab(server)
+      // As when storage refused the token: the session is on screen, nothing is saved.
+      localStorage.removeItem(REFRESH_TOKEN_KEY)
+
+      await manager.logout()
+
+      expect(store.getState()).toMatchObject({ status: 'anonymous', endReason: 'signedOut' })
+      expect(ended).toHaveBeenCalledExactlyOnceWith('signedOut')
+      expect(server.observed.sentLogoutTokens).toEqual([])
     })
 
     it('signs out locally even when the API cannot be reached', async () => {

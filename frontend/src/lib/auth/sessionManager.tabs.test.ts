@@ -113,4 +113,17 @@ describe('createSessionManager across tabs', () => {
     expect(storedToken()).toBe(storedByOtherTab)
     expect(tabA.store.getState().status).toBe('anonymous')
   })
+
+  it('when told the session ended in another tab, leaves alone the token that tab stored since', async () => {
+    const server = createFakeAuthServer()
+    const lock = createRefreshLock(undefined)
+    const tabA = await createRestoredTab(server, { lock })
+    // Tab B signed out and signed straight back in before tab A heard about it.
+    const storedByOtherTab = server.signIn().refreshToken
+    localStorage.setItem(REFRESH_TOKEN_KEY, storedByOtherTab)
+
+    tabA.manager.endedInAnotherTab()
+
+    expect(storedToken()).toBe(storedByOtherTab)
+  })
 })

@@ -28,7 +28,10 @@ export interface SessionManager extends SessionPort {
    */
   retryRestore(): Promise<void>
   login(credentials: Credentials): Promise<void>
+  /** Harmless when repeated: with nothing left to sign out, it calls nothing and announces nothing. */
   logout(): Promise<void>
+  /** Another tab removed the saved token. Ends this tab's session without touching storage or the API. */
+  endedInAnotherTab(): void
   onEnded(listener: (reason: SessionEndReason) => void): () => void
 }
 
@@ -174,6 +177,11 @@ export function createSessionManager({
       storage.remove()
       return token
     })
+    // A second click on Sign out. A session kept only in memory (blocked storage) has no saved token, but is
+    // still on screen and still ends here.
+    if (signedOutToken === null && store.getState().status !== 'authenticated') {
+      return
+    }
     clearSession('signedOut')
     if (signedOutToken !== null) {
       await authApi.logout(signedOutToken).catch(() => undefined)
@@ -191,6 +199,12 @@ export function createSessionManager({
     },
     login,
     logout,
+    endedInAnotherTab() {
+      // Whatever the storage holds now belongs to the other tab, which may already have signed in again.
+      if (store.getState().status === 'authenticated') {
+        clearSession('endedElsewhere')
+      }
+    },
     onEnded(listener) {
       listeners.add(listener)
       return () => {
