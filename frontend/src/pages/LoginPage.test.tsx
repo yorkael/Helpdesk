@@ -5,11 +5,12 @@ import { SessionContext } from '../app/session/sessionContext'
 import { ApiError } from '../lib/api/ApiError'
 import type { ProblemDetails } from '../lib/api/problem'
 import { MalformedAuthResponseError } from '../lib/auth/MalformedAuthResponseError'
+import type { SessionEndReason } from '../lib/auth/sessionStore'
 import { createFakeSession } from '../test/fakeSession'
 import { LoginPage } from './LoginPage'
 
-function renderLogin() {
-  const fake = createFakeSession('anonymous')
+function renderLogin(endReason: SessionEndReason | null = null) {
+  const fake = createFakeSession('anonymous', null, endReason)
   const view = render(
     <SessionContext value={fake.session}>
       <LoginPage />
@@ -32,6 +33,18 @@ describe('LoginPage', () => {
 
     expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'username')
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password')
+  })
+
+  it('says why the user is here when the session expired', () => {
+    renderLogin('expired')
+
+    expect(screen.getByRole('status')).toHaveTextContent('Your session expired. Please sign in again.')
+  })
+
+  it('says nothing about an expiry after a deliberate sign-out', () => {
+    renderLogin('signedOut')
+
+    expect(screen.queryByText('Your session expired. Please sign in again.')).not.toBeInTheDocument()
   })
 
   it('uses an email field and a masked password field', () => {
@@ -102,35 +115,31 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't reach the server. Try again.")
   })
 
-  it('says something went wrong on a server error or rate limiting', async () => {
-    for (const status of [503, 429]) {
+  // The server answered, but with nothing the form can act on.
+  it('says something went wrong on a server error, rate limiting or an answer without tokens', async () => {
+    const failures = [
+      { label: '503', error: apiError(503) },
+      { label: '429', error: apiError(429) },
+      { label: 'no tokens', error: new MalformedAuthResponseError('refreshToken') },
+    ]
+
+    for (const { label, error } of failures) {
       const user = userEvent.setup()
       const { manager, unmount } = renderLogin()
-      manager.login.mockRejectedValue(apiError(status))
+      manager.login.mockRejectedValue(error)
 
       await fillIn(user)
       await user.click(signInButton())
 
-      // The status travels with the result, so a failure names the case that broke.
+      // The label travels with the result, so a failure names the case that broke.
       await vi.waitFor(() =>
-        expect({ status, alert: screen.queryByRole('alert')?.textContent ?? null }).toEqual({
-          status,
+        expect({ label, alert: screen.queryByRole('alert')?.textContent ?? null }).toEqual({
+          label,
           alert: 'Something went wrong. Try again later.',
         }),
       )
       unmount()
     }
-  })
-
-  it('says something went wrong when the API answered without tokens, since the server was reached', async () => {
-    const user = userEvent.setup()
-    const { manager } = renderLogin()
-    manager.login.mockRejectedValue(new MalformedAuthResponseError('refreshToken'))
-
-    await fillIn(user)
-    await user.click(signInButton())
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again later.')
   })
 
   it('shows the button as loading while signing in', async () => {

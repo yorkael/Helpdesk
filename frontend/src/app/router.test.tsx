@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, type RouteObject } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ANA_CREDENTIALS, createFakeAuthServer } from '../test/fakeAuthServer'
 import { createFakeSession, userWithRole } from '../test/fakeSession'
 import { renderWithSession } from '../test/renderWithSession'
-import { createTab } from '../test/sessionTab'
+import { REFRESH_TOKEN_KEY } from '../lib/auth/refreshTokenStorage'
+import { createRestoredTab, createTab } from '../test/sessionTab'
 import { SLOW_RENDER_WAIT_MS, SLOW_TEST_TIMEOUT_MS } from '../test/timeouts'
 import { routes } from './router'
 import type { AppSession } from './session/createAppSession'
@@ -88,5 +89,32 @@ describe('routes', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
     expect(router.state.location).toMatchObject({ pathname: '/tickets/42', search: '?x=1', hash: '#c' })
+  })
+
+  // Integration on purpose, like the one above: an expiry seen by the real manager, through every guard.
+  it('sends a user whose session expired to sign in again and back to the same page', { timeout: SLOW_TEST_TIMEOUT_MS }, async () => {
+    const user = userEvent.setup()
+    const server = createFakeAuthServer()
+    const tab = await createRestoredTab(server)
+    const router = createMemoryRouter(routes, { initialEntries: ['/tickets/9'] })
+    renderWithSession(
+      <SessionGate>
+        <RouterProvider router={router} />
+      </SessionGate>,
+      tab,
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Page not found' }, { timeout: SLOW_RENDER_WAIT_MS })
+
+    // What the API client does after a 401: one refresh, which the server now rejects.
+    server.expireRefreshToken(localStorage.getItem(REFRESH_TOKEN_KEY)!)
+    await act(() => tab.manager.refresh())
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Your session expired. Please sign in again.')
+    await user.type(screen.getByLabelText('Email'), ANA_CREDENTIALS.email)
+    await user.type(screen.getByLabelText('Password'), ANA_CREDENTIALS.password)
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/tickets/9')
   })
 })

@@ -12,9 +12,13 @@ export const userWithRole = (role: Role): CurrentUser => ({
 
 // A session for component tests: a real store set by hand and a manager of mocks, so a component's tests never
 // depend on how the real manager reaches a state. Only the deliberate integration tests use the real one.
-export function createFakeSession(status: SessionStatus = 'restoring', user: CurrentUser | null = null) {
+export function createFakeSession(
+  status: SessionStatus = 'restoring',
+  user: CurrentUser | null = null,
+  endReason: SessionEndReason | null = null,
+) {
   const store = createSessionStore()
-  store.setState({ status, user })
+  store.setState({ status, user, endReason })
   const listeners = new Set<(reason: SessionEndReason) => void>()
   const manager = {
     accessToken: vi.fn<SessionManager['accessToken']>(() => null),

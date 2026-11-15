@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { useSessionManager } from '../app/session/sessionContext'
+import { useSessionManager, useSessionState } from '../app/session/sessionContext'
 import { ApiError } from '../lib/api/ApiError'
 import { Button } from '../ui/Button'
 import { Field, Input } from '../ui/Field'
@@ -75,6 +75,7 @@ function focusFirstInvalid(form: HTMLFormElement, errors: FieldErrors): void {
 // On success there is nothing to do here: the session becomes authenticated and RedirectIfAuthenticated leaves.
 export function LoginPage() {
   const manager = useSessionManager()
+  const expired = useSessionState((state) => state.endReason === 'expired')
   // A ref, not state: two submits in the same tick both read the state from before either of them.
   const submitting = useRef(false)
   const [pending, setPending] = useState(false)
@@ -118,6 +119,13 @@ export function LoginPage() {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col gap-6 py-12">
       <h1 className="text-3xl text-ink">Sign in</h1>
+      {/* A status, not an alert: it explains why the user is here, it does not report a failed action. */}
+      {expired && (
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- <output> is not exposed as a live region as reliably as an explicit role="status"
+        <p role="status" className="text-sm text-muted">
+          Your session expired. Please sign in again.
+        </p>
+      )}
       <form noValidate onSubmit={(event) => void handleSubmit(event)} className="flex flex-col gap-4">
         <Field label="Email" error={fieldErrors.email}>
           <Input name="email" type="email" autoComplete="username" />

@@ -31,14 +31,21 @@ describe('createAuthApi', () => {
     await expect(createAuthApi(fetchFn).login({ email: 'ana@example.com', password: 'wrong' })).rejects.toMatchObject({ status: 401 })
   })
 
-  it('refreshes with the refresh token in the body and passes the abort signal on', async () => {
+  it('refreshes with the refresh token in the body', async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => jsonResponse(200, tokens))
+
+    await createAuthApi(fetchFn).refresh('refresh-0')
+
+    expect(fetchFn.mock.calls[0]?.[0]).toBe('/api/auth/refresh')
+    expect(sentBody(fetchFn)).toEqual({ refreshToken: 'refresh-0' })
+  })
+
+  it('passes the abort signal on with the refresh', async () => {
     const fetchFn = vi.fn<typeof fetch>(async () => jsonResponse(200, tokens))
     const controller = new AbortController()
 
     await createAuthApi(fetchFn).refresh('refresh-0', controller.signal)
 
-    expect(fetchFn.mock.calls[0]?.[0]).toBe('/api/auth/refresh')
-    expect(sentBody(fetchFn)).toEqual({ refreshToken: 'refresh-0' })
     expect(fetchFn.mock.calls[0]?.[1]?.signal).toBe(controller.signal)
   })
 
