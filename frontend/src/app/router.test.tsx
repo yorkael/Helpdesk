@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, type RouteObject } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ANA_CREDENTIALS, createFakeAuthServer } from '../test/fakeAuthServer'
+import { createApiClient } from '../lib/api/apiClient'
+import { ANA_CREDENTIALS, createFakeAuthServer, type FakeAuthServer } from '../test/fakeAuthServer'
 import { createFakeSession, userWithRole } from '../test/fakeSession'
 import { renderWithSession } from '../test/renderWithSession'
 import { REFRESH_TOKEN_KEY } from '../lib/auth/refreshTokenStorage'
@@ -21,6 +22,12 @@ function renderAt(path: string, session: AppSession) {
     </SessionContext>,
   )
 }
+
+// The real API client on top of a test tab, so the e2e tests run the whole session the app builds.
+const withApiClient = (tab: ReturnType<typeof createTab>, server: FakeAuthServer): AppSession => ({
+  ...tab,
+  api: createApiClient(server.fetch, tab.manager),
+})
 
 const signedIn = () => createFakeSession('authenticated', userWithRole('Agent')).session
 
@@ -75,12 +82,13 @@ describe('routes', () => {
   // Integration on purpose: the real session manager against the fake API, through every guard.
   it('brings a signed-out visitor back to the exact address after signing in', { timeout: SLOW_TEST_TIMEOUT_MS }, async () => {
     const user = userEvent.setup()
+    const server = createFakeAuthServer()
     const router = createMemoryRouter(routes, { initialEntries: ['/tickets/42?x=1#c'] })
     renderWithSession(
       <SessionGate>
         <RouterProvider router={router} />
       </SessionGate>,
-      createTab(createFakeAuthServer()),
+      withApiClient(createTab(server), server),
     )
 
     await user.type(await screen.findByLabelText('Email', {}, { timeout: SLOW_RENDER_WAIT_MS }), ANA_CREDENTIALS.email)
@@ -101,7 +109,7 @@ describe('routes', () => {
       <SessionGate>
         <RouterProvider router={router} />
       </SessionGate>,
-      tab,
+      withApiClient(tab, server),
     )
     await screen.findByRole('heading', { level: 1, name: 'Page not found' }, { timeout: SLOW_RENDER_WAIT_MS })
 

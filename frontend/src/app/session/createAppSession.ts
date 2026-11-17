@@ -1,3 +1,4 @@
+import { createApiClient, type ApiClient } from '../../lib/api/apiClient'
 import type { Fetch } from '../../lib/api/http'
 import { createAuthApi } from '../../lib/auth/authApi'
 import { createRefreshLock } from '../../lib/auth/refreshLock'
@@ -11,6 +12,7 @@ const REFRESH_TIMEOUT_MS = 15_000
 export interface AppSession {
   manager: SessionManager
   store: SessionStore
+  api: ApiClient
 }
 
 // Only builds objects: no request, listener or timer starts here. StrictMode runs a useState initializer twice
@@ -28,5 +30,11 @@ export function createAppSession(): AppSession {
     store,
     createTimeoutSignal: () => AbortSignal.timeout(REFRESH_TIMEOUT_MS),
   })
-  return { manager, store }
+  // Only the three calls the client needs, so it cannot sign in or out; each one asks the manager at call time.
+  const api = createApiClient(fetchFn, {
+    accessToken: () => manager.accessToken(),
+    refresh: () => manager.refresh(),
+    expire: () => manager.expire(),
+  })
+  return { manager, store, api }
 }

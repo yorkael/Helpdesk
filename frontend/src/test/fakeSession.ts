@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import type { ApiClient, RequestOptions } from '../lib/api/apiClient'
 import type { SessionManager } from '../lib/auth/sessionManager'
 import { createSessionStore, type SessionEndReason, type SessionStatus } from '../lib/auth/sessionStore'
 import type { CurrentUser, Role } from '../lib/auth/types'
@@ -36,11 +37,18 @@ export function createFakeSession(
       }
     }),
   } satisfies SessionManager
+  // A test that expects a request sets its answer; any other request fails the test instead of passing unseen.
+  // A mock cannot be generic, so the client's generic request hands the test's answer back as the asked-for type.
+  const request = vi.fn<(path: string, options?: RequestOptions) => Promise<unknown>>(async (path) => {
+    throw new Error(`Unexpected request to ${path}`)
+  })
+  const api: ApiClient = { request: <T>(path: string, options?: RequestOptions) => request(path, options) as Promise<T> }
 
   return {
-    session: { manager, store },
+    session: { manager, store, api },
     manager,
     store,
+    request,
     /** Ends the session the way the real manager announces it, without touching the store. */
     end(reason: SessionEndReason) {
       for (const listener of listeners) {
