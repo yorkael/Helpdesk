@@ -33,8 +33,9 @@ describe('App', () => {
     await vi.waitFor(() => expect(server.counters.meCalls).toBe(1))
     rerender(app())
 
-    // A session created on that render would start restoring again and hide the page.
-    expect(screen.getByRole('heading', { level: 1, name: 'Helpdesk' })).toBeInTheDocument()
+    // A session created on that render would hide the page and bring it back only after its own restore had
+    // reached the server, so waiting for the page and then counting the refreshes catches it.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Helpdesk' })).toBeInTheDocument()
     expect(server.counters.refreshCalls).toBe(1)
     expect(server.counters.massRevocations).toBe(0)
   })
