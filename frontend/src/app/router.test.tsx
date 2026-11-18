@@ -1,4 +1,5 @@
-import { act, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, type RouteObject } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -15,11 +16,26 @@ import type { AppSession } from './session/createAppSession'
 import { SessionContext } from './session/sessionContext'
 import { SessionGate } from './session/SessionGate'
 
+// The staff guard is replaced by a marked pass-through: which roles it lets in is RequireStaff.test's job, so a
+// change in RequireRole cannot fail these routing tests too. This file only checks what sits behind it.
+vi.mock('./guards/RequireStaff', async () => {
+  const { Outlet } = await import('react-router')
+  return {
+    RequireStaff: () => (
+      <div data-testid="staff-guard">
+        <Outlet />
+      </div>
+    ),
+  }
+})
+
 function renderAt(path: string, session: AppSession) {
   render(
-    <SessionContext value={session}>
-      <RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />
-    </SessionContext>,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <SessionContext value={session}>
+        <RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />
+      </SessionContext>
+    </QueryClientProvider>,
   )
 }
 
@@ -58,6 +74,22 @@ describe('routes', () => {
     expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/')
   })
 
+  it('puts the ticket list behind the staff guard', async () => {
+    const fake = createFakeSession('authenticated', userWithRole('Agent'))
+    fake.request.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0 })
+    renderAt('/tickets', fake.session)
+
+    const guard = await screen.findByTestId('staff-guard')
+
+    expect(within(guard).getByRole('heading', { level: 1, name: 'Tickets' })).toBeInTheDocument()
+  })
+
+  it('keeps the paths under /tickets that have no page yet as not found', async () => {
+    renderAt('/tickets/42', signedIn())
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
+  })
+
   it('serves the component gallery at /dev/gallery in development, even when signed out', { timeout: SLOW_TEST_TIMEOUT_MS }, async () => {
     renderAt('/dev/gallery', createFakeSession('anonymous').session)
 
@@ -83,7 +115,7 @@ describe('routes', () => {
   it('brings a signed-out visitor back to the exact address after signing in', { timeout: SLOW_TEST_TIMEOUT_MS }, async () => {
     const user = userEvent.setup()
     const server = createFakeAuthServer()
-    const router = createMemoryRouter(routes, { initialEntries: ['/tickets/42?x=1#c'] })
+    const router = createMemoryRouter(routes, { initialEntries: ['/no-such-page/42?x=1#c'] })
     renderWithSession(
       <SessionGate>
         <RouterProvider router={router} />
@@ -96,7 +128,7 @@ describe('routes', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
-    expect(router.state.location).toMatchObject({ pathname: '/tickets/42', search: '?x=1', hash: '#c' })
+    expect(router.state.location).toMatchObject({ pathname: '/no-such-page/42', search: '?x=1', hash: '#c' })
   })
 
   // Integration on purpose, like the one above: an expiry seen by the real manager, through every guard.
@@ -104,7 +136,7 @@ describe('routes', () => {
     const user = userEvent.setup()
     const server = createFakeAuthServer()
     const tab = await createRestoredTab(server)
-    const router = createMemoryRouter(routes, { initialEntries: ['/tickets/9'] })
+    const router = createMemoryRouter(routes, { initialEntries: ['/no-such-page/9'] })
     renderWithSession(
       <SessionGate>
         <RouterProvider router={router} />
@@ -123,6 +155,6 @@ describe('routes', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/tickets/9')
+    expect(router.state.location.pathname).toBe('/no-such-page/9')
   })
 })

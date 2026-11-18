@@ -1,14 +1,30 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createFakeSession, userWithRole } from '../test/fakeSession'
 import { AppLayout } from './AppLayout'
 import { SessionContext } from './session/sessionContext'
 
-function renderLayout(fake = createFakeSession('anonymous')) {
-  const router = createMemoryRouter([{ path: '/', Component: AppLayout, children: [{ index: true, Component: () => <p>Page content</p> }] }])
+// A stand-in at the layer boundary: which roles are staff is RequireStaff's rule, tested there; here only that
+// the header follows the list, whatever it holds.
+vi.mock('../lib/auth/staff', () => ({ STAFF_ROLES: ['Admin'] }))
+
+function renderLayout(fake = createFakeSession('anonymous'), path = '/') {
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        Component: AppLayout,
+        children: [
+          { index: true, Component: () => <p>Page content</p> },
+          { path: 'tickets', Component: () => <p>Ticket list</p> },
+        ],
+      },
+    ],
+    { initialEntries: [path] },
+  )
   render(
     <SessionContext value={fake.session}>
       <RouterProvider router={router} />
@@ -53,6 +69,26 @@ describe('AppLayout', () => {
     await user.click(await screen.findByRole('button', { name: 'Sign out' }))
 
     expect(manager.logout).toHaveBeenCalledOnce()
+  })
+
+  // One assertion on both, so a wrong target and a missing current-page mark fail on different labels.
+  it('links a staff member to the ticket list and marks it on that page', async () => {
+    renderLayout(createFakeSession('authenticated', userWithRole('Admin')), '/tickets')
+
+    await screen.findByText('Ticket list')
+    const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Tickets' })
+
+    expect({ href: link.getAttribute('href'), current: link.getAttribute('aria-current') }).toEqual({
+      href: '/tickets',
+      current: 'page',
+    })
+  })
+
+  it('shows no ticket link to someone who is not staff', async () => {
+    renderLayout(createFakeSession('authenticated', userWithRole('Agent')))
+
+    await screen.findByRole('button', { name: 'Sign out' })
+    expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument()
   })
 
   it('offers no sign-out to a visitor who is not signed in', async () => {

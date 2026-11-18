@@ -1,4 +1,5 @@
-import { Link, Outlet } from 'react-router'
+import { Link, NavLink, Outlet } from 'react-router'
+import { STAFF_ROLES } from '../lib/auth/staff'
 import { Button } from '../ui/Button'
 import { useSessionManager, useSessionState } from './session/sessionContext'
 
@@ -16,9 +17,19 @@ export function AppLayout() {
       </a>
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-          <Link to="/" className="font-display text-lg font-bold tracking-tight text-ink">
-            Helpdesk
-          </Link>
+          <div className="flex items-center gap-6">
+            <Link to="/" className="font-display text-lg font-bold tracking-tight text-ink">
+              Helpdesk
+            </Link>
+            {/* A link only for the roles the route lets in; NavLink marks the current page with aria-current. */}
+            {user && STAFF_ROLES.includes(user.role) && (
+              <nav aria-label="Main">
+                <NavLink to="/tickets" className="text-sm font-semibold text-muted aria-[current=page]:text-ink">
+                  Tickets
+                </NavLink>
+              </nav>
+            )}
+          </div>
           {/* No navigation here: RequireAuth sees the session end and sends the user to the login page. */}
           {user && (
             <div className="flex items-center gap-3">

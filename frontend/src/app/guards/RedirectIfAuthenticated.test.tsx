@@ -22,23 +22,34 @@ function renderAt(entry: InitialEntry, session: AppSession) {
     ],
     { initialEntries: [entry] },
   )
-  return render(
+  const { unmount } = render(
     <SessionContext value={session}>
       <RouterProvider router={router} />
     </SessionContext>,
   )
+  return { router, unmount }
 }
 
 describe('RedirectIfAuthenticated', () => {
-  it('sends a signed-in user of any role to their landing page', async () => {
+  // One assertion on the whole list, so a broken rule shows every role it sends to the wrong place at once.
+  it('sends a signed-in user of each role to their landing page', async () => {
     const roles: Role[] = ['Client', 'Agent', 'Admin']
+    const destinations: { role: Role; destination: string }[] = []
 
     for (const role of roles) {
-      const { unmount } = renderAt('/login', createFakeSession('authenticated', userWithRole(role)).session)
-      // The role travels with the result, so a failure names the role that broke.
-      await vi.waitFor(() => expect({ role, home: screen.queryByText('Home page') !== null }).toEqual({ role, home: true }))
+      const { router, unmount } = renderAt('/login', createFakeSession('authenticated', userWithRole(role)).session)
+      await vi.waitFor(() => {
+        if (router.state.location.pathname === '/login') throw new Error(`${role} is still on /login`)
+      })
+      destinations.push({ role, destination: router.state.location.pathname })
       unmount()
     }
+
+    expect(destinations).toEqual([
+      { role: 'Client', destination: '/' },
+      { role: 'Agent', destination: '/tickets' },
+      { role: 'Admin', destination: '/tickets' },
+    ])
   })
 
   it('returns a signed-in user to the page they asked for', async () => {

@@ -1,10 +1,11 @@
 import type { Role } from './types'
 
-// Every role starts on the home page until the ticket screens exist; this is the one place to change then.
+// Where each role starts after signing in: staff on the ticket list, a client on the home page until the
+// client's own screens exist.
 const LANDING_PATHS: Record<Role, string> = {
   Client: '/',
-  Agent: '/',
-  Admin: '/',
+  Agent: '/tickets',
+  Admin: '/tickets',
 }
 
 export function landingPathFor(role: Role): string {

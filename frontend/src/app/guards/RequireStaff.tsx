@@ -1,9 +1,7 @@
-import type { Role } from '../../lib/auth/types'
+import { STAFF_ROLES } from '../../lib/auth/staff'
 import { RequireRole } from './RequireRole'
 
-// Pages for the people who work the tickets. UX only, like RequireRole: the API checks every request.
-const STAFF: readonly Role[] = ['Agent', 'Admin']
-
+// UX only, like RequireRole: the API checks every request.
 export function RequireStaff() {
-  return <RequireRole allow={STAFF} />
+  return <RequireRole allow={STAFF_ROLES} />
 }
