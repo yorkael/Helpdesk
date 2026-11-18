@@ -21,3 +21,12 @@ export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
   High: 'High',
   Urgent: 'Urgent',
 }
+
+// A newer API may send a value this build does not know; these let a screen show it as text instead of failing.
+export function isTicketStatus(value: string): value is TicketStatus {
+  return (TICKET_STATUSES as readonly string[]).includes(value)
+}
+
+export function isTicketPriority(value: string): value is TicketPriority {
+  return (TICKET_PRIORITIES as readonly string[]).includes(value)
+}
