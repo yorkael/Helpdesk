@@ -1,8 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { useApiClient } from '../app/session/sessionContext'
+import { useApiClient, useSessionState } from '../app/session/sessionContext'
 import { ApiError } from '../lib/api/ApiError'
+import type { CurrentUser } from '../lib/auth/types'
 import { isTicketPriority, isTicketStatus } from '../lib/ticket'
 import {
   readTicketListParams,
@@ -18,6 +19,7 @@ import { EmptyState } from '../ui/EmptyState'
 import { PriorityIndicator } from '../ui/PriorityIndicator'
 import { Skeleton } from '../ui/Skeleton'
 import { StatusBadge } from '../ui/StatusBadge'
+import { TicketFilters } from './TicketFilters'
 
 const SKELETON_ROWS = 5
 
@@ -26,8 +28,10 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 // The address is the only state of the list, so a reload, a shared link and Back all show the same page.
 export function TicketListPage() {
   const api = useApiClient()
+  // RequireAuth and RequireStaff only render this page for a signed-in user.
+  const viewer = useSessionState((state) => state.user)!
   const [searchParams, setSearchParams] = useSearchParams()
-  const params = readTicketListParams(searchParams)
+  const params = forViewer(readTicketListParams(searchParams), viewer)
   const normalized = writeTicketListParams(params).toString()
 
   // A value the API would reject was already dropped from params; the address is rewritten to match, without
@@ -59,6 +63,11 @@ export function TicketListPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl text-ink">Tickets</h1>
+      <TicketFilters
+        params={params}
+        viewer={viewer}
+        onChange={(next) => setSearchParams(writeTicketListParams(next))}
+      />
       <section aria-labelledby="ticket-results" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="ticket-results" ref={resultsHeading} tabIndex={-1} className="text-lg text-ink focus:outline-none">
@@ -79,6 +88,15 @@ export function TicketListPage() {
       </section>
     </div>
   )
+}
+
+// An agent sees only the tickets assigned to them or to no one, so the API answers 0 results to an agent who
+// filters by another agent (measured on the API). Dropping that id shows their list instead of an empty one.
+function forViewer(params: TicketListParams, viewer: CurrentUser): TicketListParams {
+  if (viewer.role === 'Agent' && params.assignedToId !== null && params.assignedToId !== viewer.id) {
+    return { ...params, assignedToId: null }
+  }
+  return params
 }
 
 function summaryOf(response: PagedResponse<TicketListItem> | undefined, pending: boolean): string {

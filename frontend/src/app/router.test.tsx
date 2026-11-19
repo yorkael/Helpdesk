@@ -76,7 +76,10 @@ describe('routes', () => {
 
   it('puts the ticket list behind the staff guard', async () => {
     const fake = createFakeSession('authenticated', userWithRole('Agent'))
-    fake.request.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0 })
+    // The page's filters ask for the categories too.
+    fake.request.mockImplementation(async (path) =>
+      path === '/api/categories' ? [] : { items: [], page: 1, pageSize: 20, totalCount: 0 },
+    )
     renderAt('/tickets', fake.session)
 
     const guard = await screen.findByTestId('staff-guard')

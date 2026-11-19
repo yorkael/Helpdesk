@@ -7,8 +7,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext } from '../app/session/sessionContext'
 import { ApiError } from '../lib/api/ApiError'
 import type { PagedResponse, TicketListItem } from '../lib/tickets/types'
+import type { TicketListParams } from '../lib/tickets/listParams'
 import { createFakeSession, userWithRole } from '../test/fakeSession'
+import { TicketFilters } from './TicketFilters'
 import { TicketListPage } from './TicketListPage'
+
+// The controls have their own tests; here they are replaced so this file sees only what the page does with
+// the params they hand back.
+vi.mock('./TicketFilters', () => ({ TicketFilters: vi.fn<typeof TicketFilters>(() => <p>Filters</p>) }))
+
+const lastFiltersProps = () => vi.mocked(TicketFilters).mock.lastCall![0]
+
+// GUIDs, as the API's ids are: the address drops any other id before the page sees it.
+const OWN_AGENT_ID = '30000000-0000-4000-8000-000000000001'
+const OTHER_AGENT_ID = '30000000-0000-4000-8000-000000000002'
 
 function ticket(number: number, overrides: Partial<TicketListItem> = {}): TicketListItem {
   return {
@@ -34,8 +46,8 @@ function pageOf(items: TicketListItem[], page = 1, totalCount = items.length): P
 const tickets = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => ticket(from + index))
 
 // A component test: the API client is the fake session's, and nothing retries, so an error shows at once.
-function renderListAt(path: string, answer: (request: FakeRequest) => void) {
-  const fake = createFakeSession('authenticated', userWithRole('Agent'))
+function renderListAt(path: string, answer: (request: FakeRequest) => void, viewer = userWithRole('Agent')) {
+  const fake = createFakeSession('authenticated', viewer)
   // Set before the first render, which already sends the request.
   answer(fake.request)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -207,5 +219,47 @@ describe('TicketListPage', () => {
       search: '?search=jam',
       action: 'REPLACE',
     })
+  })
+
+  it('puts the filters the controls choose in the address, as a new history entry', async () => {
+    const { router } = renderListAt('/tickets', (request) => request.mockResolvedValue(pageOf([ticket(1)])))
+    await screen.findByText('Ticket 1')
+    const chosen: TicketListParams = { ...lastFiltersProps().params, status: 'Open', search: 'jam' }
+
+    act(() => lastFiltersProps().onChange(chosen))
+
+    expect(router.state.location.search).toBe('?status=Open&search=jam')
+    expect(router.state.historyAction).toBe('PUSH')
+  })
+
+  // What reaches the API, not the address: the address is rewritten to match by the general rewrite (TL16/TL17).
+  it("asks for an agent's own tickets, not another agent's", async () => {
+    const agent = { ...userWithRole('Agent'), id: OWN_AGENT_ID }
+    const { fake, router } = renderListAt(
+      `/tickets?assignedToId=${OTHER_AGENT_ID}`,
+      (request) => request.mockResolvedValue(pageOf([ticket(1)])),
+      agent,
+    )
+    await screen.findByText('Ticket 1')
+    await act(() => router.navigate(`/tickets?assignedToId=${agent.id}`))
+
+    await vi.waitFor(() => expect(fake.request).toHaveBeenCalledTimes(2))
+    expect(fake.request.mock.calls.map(([path]) => path)).toEqual([
+      '/api/tickets?pageSize=20',
+      `/api/tickets?assignedToId=${agent.id}&pageSize=20`,
+    ])
+  })
+
+  it('lets an admin filter by any agent', async () => {
+    const admin = { ...userWithRole('Admin'), id: '30000000-0000-4000-8000-000000000003' }
+    const { fake } = renderListAt(
+      `/tickets?assignedToId=${OTHER_AGENT_ID}`,
+      (request) => request.mockResolvedValue(pageOf([ticket(1)])),
+      admin,
+    )
+
+    await screen.findByText('Ticket 1')
+
+    expect(fake.request.mock.calls.map(([path]) => path)).toEqual([`/api/tickets?assignedToId=${OTHER_AGENT_ID}&pageSize=20`])
   })
 })
