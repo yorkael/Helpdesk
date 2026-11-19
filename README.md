@@ -13,8 +13,8 @@ A support ticket system built as a public portfolio project: a layered ASP.NET C
 | Backend | ASP.NET Core on .NET 10, C#, EF Core, FluentValidation |
 | Authentication | JWT bearer access tokens, rotating refresh tokens, role-based policies |
 | Database | PostgreSQL 18 |
-| Tests | xUnit, Testcontainers, WebApplicationFactory |
-| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Tests | xUnit, Testcontainers, WebApplicationFactory; Vitest, Testing Library and jsdom for the frontend |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query, Zustand (session state only) |
 | Tooling | pnpm, oxlint |
 | Containers | Docker multi-stage images, Docker Compose, nginx |
 | CI | GitHub Actions |
@@ -67,7 +67,7 @@ The backend follows a layered architecture. Dependencies point inward, so busine
 ### Prerequisites
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Node.js](https://nodejs.org/) 22.12 or later
+- [Node.js](https://nodejs.org/) `^22.22.2 || ^24.15.0 || >=26.0.0`, the range jsdom 30 requires (Node 23 and 25 are excluded). The `engines` field in `frontend/package.json` only documents it: pnpm does not enforce it while the lockfile is up to date. CI and Docker use `frontend/.nvmrc`
 - [pnpm](https://pnpm.io/installation) (the version is pinned in `frontend/package.json`)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (full stack, local database and integration tests)
 
@@ -239,6 +239,52 @@ pnpm dev
 
 The app runs on http://localhost:5173.
 
+```bash
+pnpm lint    # oxlint, warnings fail
+pnpm test    # Vitest with Testing Library on jsdom
+pnpm build   # type check and production build
+```
+
+In development, http://localhost:5173/dev/gallery shows every UI primitive in its states (statuses, priorities, badges, fields, buttons, loading and empty states). The route exists only in development: the production build leaves the gallery out entirely.
+
+## Session handling
+
+How the frontend keeps a user signed in with the tokens described in [Authentication](#authentication).
+
+- **Where the tokens live.** The access token lives only in memory, inside the session manager: never in React state, the session store or browser storage. The refresh token is saved in `localStorage` under `helpdesk.refreshToken`, so a reload restores the session. If storage is blocked or full, the session still works, but only in that tab's memory.
+- **One refresh at a time.** Within a tab, simultaneous refreshes share one request. Across tabs, the refresh runs inside the Web Lock `helpdesk-refresh`: the refresh token is read from storage only once the lock is held, and the new one is saved before the lock is released, so the next tab always presents the current token. A refresh gives up after 15 seconds, so a hung request cannot hold the lock for every tab.
+- **Responses are checked.** A `200` from login or refresh without a non-empty `accessToken` and `refreshToken` is rejected before anything is stored. The `/me` response is not validated: a malformed one can only show wrong data on screen, and it touches neither the tokens nor storage.
+- **Only a 401 ends the session.** A refresh rejected with `401` signs the user out. A network failure, a timeout, a server error, rate limiting or a malformed answer leaves the session and the saved token as they were; on startup the app then shows "Can't reach the server" with a Retry button. A failed refresh is never repeated on its own. Queries are not retried after a `4xx` other than `408` and `429`, and a `403` never ends the session.
+- **How a session ends.** Every end drops the cached data of the previous user. The login page explains why the user is there:
+
+  | Reason | Cause | Notice on the login page | Returns to the requested page after signing in |
+  |---|---|---|---|
+  | `expired` | The API rejected the refresh token | "Your session expired. Please sign in again." | Yes |
+  | `signedOut` | The user pressed Sign out in the header | none | No: whoever signs in next starts from their own landing page |
+  | `endedElsewhere` | Another tab removed the saved token: it signed out, its session expired, or storage was cleared | "Your session ended in another tab. Please sign in again." | Yes |
+
+- **Sign out** removes the saved token inside the lock before calling the API, and signs the user out locally even if that call fails. Pressing it twice does nothing the second time. After a sign-out, the browser's Back button leads to a protected address again, which goes through the guard and lands on the login page, still without remembering the page.
+- **Other tabs** learn about a removed token from the browser's `storage` event and end their session without touching storage or the API. A token rotation writes a new value and is ignored. A sign-in in another tab is not propagated: the other tabs notice it at their next refresh, when they read the new token from storage.
+- **Guards are UX only.** `RequireAuth` and `RequireRole` decide which page to show; the API authorizes every request on its own. A role that may not see a page gets the forbidden page and keeps its session.
+
+Known limitations:
+
+- **Presenting a refresh token twice revokes every session of the user.** The API treats a rotated token presented again as stolen. Two refreshes with the same token count as reuse too, unless they arrive at almost the same instant ([#43](https://github.com/yorkael/Helpdesk/issues/43)). Measured against the API in an isolated compose project, 30 attempts per delay between the two requests:
+
+  | Delay between requests | Loser gets 401, winner keeps its session | All sessions revoked |
+  |---|---|---|
+  | 0 ms | 26 of 30 | 4 of 30 |
+  | 5, 20 and 100 ms | 0 of 30 | 30 of 30 |
+
+  The single-flight and the lock exist to avoid this. Without Web Locks (older browsers, pages not served from a secure context), the fallback serializes refreshes only within a tab, so two tabs can still trigger it.
+- **A lost or late answer.** If the server rotated the token but its answer never arrived, or the 15-second timeout fired after the server had already answered, the saved token is already used. Pressing Retry presents it again and revokes every session of the user.
+- **One session per browser.** All tabs share one saved token: signing in as another user in one tab switches the other tabs to that user at their next refresh.
+- **Signing in over an existing session** does not sign the previous one out on the server: its refresh token stays valid until it expires, up to 7 days later.
+- **The user on screen comes from the access token.** `/me` answers with the token's claims, not with the database, so a change of role or name shows up only after the next refresh, up to 15 minutes later.
+- **The access token outlives Sign out.** Sign out revokes the refresh token; the access token is forgotten by the tab but stays valid until it expires, up to 15 minutes later.
+- **XSS.** A script injected into the page could read the refresh token from `localStorage`. This risk is accepted for v1. Moving the refresh token to an `httpOnly` cookie is tracked in [#44](https://github.com/yorkael/Helpdesk/issues/44), and a Content Security Policy arrives with the deployment ([#14](https://github.com/yorkael/Helpdesk/issues/14)).
+- **No staff-only page yet.** `RequireRole` and the forbidden page are tested, but no route uses them until the staff screens arrive, so a client receiving the forbidden page has not been checked in the running app.
+
 ## Continuous integration
 
 The [CI workflow](.github/workflows/ci.yml) runs on every pull request to `main` and every push to `main`, and can also be started by hand from the Actions tab. It has two jobs, which run in parallel on `ubuntu-24.04`:
@@ -246,7 +292,7 @@ The [CI workflow](.github/workflows/ci.yml) runs on every pull request to `main`
 | Job | Steps |
 |---|---|
 | `backend` | `dotnet restore`, `dotnet build` in Release, `dotnet test` (including the Testcontainers tests, on the runner's Docker) |
-| `frontend` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm build` |
+| `frontend` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test` (Vitest), `pnpm build` |
 
 `backend` and `frontend` are required status checks in the ruleset that protects `main`, so a pull request cannot be merged until both pass. **Do not rename these jobs:** the ruleset matches checks by name, and after a rename every pull request waits for a check that never reports. A rename has to change the ruleset at the same time.
 
@@ -264,6 +310,7 @@ dotnet test backend/Helpdesk.sln --no-build --configuration Release
 cd frontend
 pnpm install --frozen-lockfile
 pnpm lint
+pnpm test
 pnpm build
 ```
 
@@ -360,3 +407,12 @@ Known limitations, measured with Docker Desktop:
 ## License
 
 [MIT](LICENSE)
+
+### Fonts
+
+The frontend bundles two typefaces, installed from [Fontsource](https://fontsource.org/) and served by the app itself:
+
+- [Bricolage Grotesque](https://github.com/ateliertriay/bricolage), copyright 2022 The Bricolage Grotesque Project Authors, for headings.
+- [Figtree](https://github.com/erikdkennedy/figtree), copyright 2022 The Figtree Project Authors, for body text.
+
+Both are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/), not under the project's MIT license.
